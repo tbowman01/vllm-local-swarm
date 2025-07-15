@@ -1,6 +1,3 @@
-[submodule "claude-code-usage-monitor"]
-	path = claude-code-usage-monitor
-	url = https://github.com/Maciek-roboblog/Claude-Code-Usage-Monitor.git
 [submodule "CCUM"]
 	path = CCUM
 	url = https://github.com/tbowman01/Claude-Code-Usage-Monitor.git
