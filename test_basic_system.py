@@ -101,7 +101,7 @@ async def test_memory_system():
             metadata={},
             timestamp=datetime.now()
         )
-        assert entry.id == "test_id"
+        if entry.id != "test_id": raise ValueError("Entry ID does not match expected value.")
         assert entry.type == MemoryType.SESSION
         
         logger.info("✓ Memory system test passed")
