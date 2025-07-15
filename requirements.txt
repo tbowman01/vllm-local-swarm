@@ -1,0 +1,31 @@
+# Core dependencies
+ray[default]==2.9.0
+click>=8.0.0
+asyncio-mqtt
+redis>=4.0.0
+qdrant-client>=1.7.0
+langfuse>=2.0.0
+
+# Memory and storage
+psycopg2-binary>=2.9.0
+clickhouse-driver>=0.2.0
+
+# ML and AI
+openai>=1.0.0
+anthropic>=0.8.0
+sentence-transformers>=2.2.0
+tiktoken>=0.5.0
+
+# Utilities
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+structlog>=23.0.0
+uvicorn>=0.20.0
+fastapi>=0.100.0
+
+# Development
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+black>=23.0.0
+flake8>=6.0.0
+mypy>=1.0.0

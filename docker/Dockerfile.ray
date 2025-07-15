@@ -1,0 +1,32 @@
+FROM rayproject/ray:2.9.0-py311
+
+WORKDIR /app
+
+# Install additional dependencies
+RUN pip install --no-cache-dir \
+    fastapi \
+    uvicorn \
+    redis \
+    pydantic \
+    structlog \
+    click
+
+# Copy application code
+COPY src/ /app/src/
+COPY agents/ /app/agents/
+COPY memory/ /app/memory/
+COPY coordination/ /app/coordination/
+
+# Set environment variables
+ENV PYTHONPATH=/app:/app/src
+ENV RAY_DISABLE_IMPORT_WARNING=1
+
+# Expose Ray ports
+EXPOSE 8265 10001
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD ray status || exit 1
+
+# Default command will be overridden by docker-compose
+CMD ["ray", "start", "--head", "--port=6379", "--dashboard-host=0.0.0.0", "--dashboard-port=8265", "--block"]

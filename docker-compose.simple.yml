@@ -1,0 +1,150 @@
+services:
+  # Redis - Fast in-memory cache and message queue
+  redis:
+    image: redis:7-alpine
+    container_name: vllm-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 1gb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vllm-network
+
+  # Simple Model Service (Mock for testing)
+  model-service:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.simple-model
+    container_name: vllm-model-service
+    ports:
+      - "8000:8000"
+    environment:
+      MODEL_NAME: "simple-test-model"
+      MODEL_PORT: 8000
+      REDIS_URL: "redis://redis:6379"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - vllm-network
+
+  # Ray Head Node
+  ray-head:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.ray
+    container_name: vllm-ray-head
+    ports:
+      - "8265:8265"  # Ray Dashboard
+      - "10001:10001"  # Ray Client
+    volumes:
+      - ./src:/app/src
+      - ./agents:/app/agents
+      - ./memory:/app/memory
+      - ./coordination:/app/coordination
+      - ray_logs:/tmp/ray
+    environment:
+      RAY_HEAD: "true"
+      RAY_DISABLE_IMPORT_WARNING: 1
+      MODEL_SERVICE_URL: "http://model-service:8000"
+      REDIS_URL: "redis://redis:6379"
+      PYTHONPATH: "/app:/app/src"
+    depends_on:
+      redis:
+        condition: service_healthy
+      model-service:
+        condition: service_healthy
+    command: >
+      sh -c "ray start --head --port=6379 --dashboard-host=0.0.0.0 --dashboard-port=8265 
+             --object-store-memory=500000000 --block"
+    healthcheck:
+      test: ["CMD", "ray", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - vllm-network
+
+  # Memory API Service
+  memory-api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.memory-api
+    container_name: vllm-memory-api
+    ports:
+      - "8003:8003"
+    volumes:
+      - ./memory:/app/memory
+    environment:
+      REDIS_URL: "redis://redis:6379"
+      API_PORT: 8003
+      PYTHONPATH: "/app:/app/memory"
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: python /app/memory/api/server.py
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - vllm-network
+
+  # SPARC Orchestrator Service
+  sparc-orchestrator:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.orchestrator
+    container_name: vllm-sparc-orchestrator
+    ports:
+      - "8004:8004"
+    volumes:
+      - ./src:/app/src
+      - ./agents:/app/agents
+      - ./memory:/app/memory
+    environment:
+      ORCHESTRATOR_PORT: 8004
+      RAY_HEAD_URL: "ray://ray-head:10001"
+      MODEL_SERVICE_URL: "http://model-service:8000"
+      MEMORY_API_URL: "http://memory-api:8003"
+      REDIS_URL: "redis://redis:6379"
+      PYTHONPATH: "/app:/app/src"
+    depends_on:
+      ray-head:
+        condition: service_healthy
+      memory-api:
+        condition: service_healthy
+    command: python /app/src/api/orchestrator_server.py
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - vllm-network
+
+networks:
+  vllm-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  redis_data:
+    driver: local
+  ray_logs:
+    driver: local

@@ -1,0 +1,248 @@
+services:
+  # Redis - Fast in-memory cache and message queue
+  redis:
+    image: redis:7-alpine
+    container_name: vllm-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory ${REDIS_MAX_MEMORY:-1gb} --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vllm-network
+
+  # ClickHouse - Long-term trace storage
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.8
+    container_name: vllm-clickhouse
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./configs/clickhouse:/etc/clickhouse-server/config.d
+    environment:
+      CLICKHOUSE_DB: langfuse
+      CLICKHOUSE_USER: langfuse
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-langfuse123}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8123/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - vllm-network
+
+  # Qdrant - Vector database for semantic memory
+  qdrant:
+    image: qdrant/qdrant:v1.7.4
+    container_name: vllm-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__HTTP_PORT: 6333
+      QDRANT__SERVICE__GRPC_PORT: 6334
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - vllm-network
+
+  # Langfuse Database (PostgreSQL)
+  langfuse-db:
+    image: postgres:15
+    container_name: vllm-langfuse-db
+    environment:
+      POSTGRES_DB: langfuse
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: ${LANGFUSE_DB_PASSWORD:-langfuse123}
+    volumes:
+      - langfuse_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse -d langfuse"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vllm-network
+
+  # Langfuse - Observability and tracing
+  langfuse-web:
+    image: langfuse/langfuse:2
+    container_name: vllm-langfuse-web
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://langfuse:${LANGFUSE_DB_PASSWORD:-langfuse123}@langfuse-db:5432/langfuse
+      NEXTAUTH_SECRET: ${LANGFUSE_SECRET:-vllm-swarm-secret-key-2025-development-mode}
+      NEXTAUTH_URL: ${LANGFUSE_URL:-http://localhost:3000}
+      SALT: ${LANGFUSE_SALT:-vllm-swarm-salt-2025-development}
+      ENCRYPTION_KEY: ${LANGFUSE_ENCRYPTION_KEY:-vllm-swarm-encryption-key-32-chars}
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: true
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: langfuse
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-langfuse123}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/public/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - vllm-network
+
+  # Langfuse Worker - Background job processing
+  langfuse-worker:
+    image: langfuse/langfuse:2
+    container_name: vllm-langfuse-worker
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://langfuse:${LANGFUSE_DB_PASSWORD:-langfuse123}@langfuse-db:5432/langfuse
+      REDIS_URL: redis://redis:6379
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: langfuse
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-langfuse123}
+    command: ["node", "dist/src/worker.js"]
+    networks:
+      - vllm-network
+
+  # vLLM - CPU-only deployment with smaller model
+  vllm-phi:
+    image: vllm/vllm-openai:v0.4.2
+    container_name: vllm-phi-server
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models
+      - vllm_cache:/root/.cache/huggingface
+    environment:
+      VLLM_HOST: 0.0.0.0
+      VLLM_PORT: 8000
+      VLLM_MODEL: microsoft/DialoGPT-medium
+      VLLM_TENSOR_PARALLEL_SIZE: 1
+      VLLM_MAX_MODEL_LEN: 1024
+      VLLM_TRUST_REMOTE_CODE: true
+      VLLM_DISABLE_CUSTOM_ALL_REDUCE: true
+    command: >
+      --model microsoft/DialoGPT-medium
+      --host 0.0.0.0
+      --port 8000
+      --tensor-parallel-size 1
+      --max-model-len 1024
+      --trust-remote-code
+      --disable-custom-all-reduce
+      --served-model-name phi-cpu
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 60s
+      timeout: 30s
+      retries: 3
+      start_period: 120s
+    networks:
+      - vllm-network
+
+  # Simple Ray setup for CPU
+  ray-head:
+    image: rayproject/ray:2.9.0-py310
+    container_name: vllm-ray-head
+    ports:
+      - "8265:8265"  # Ray Dashboard
+      - "10001:10001"  # Ray Client
+    volumes:
+      - ./src:/app/src
+      - ./agents:/app/agents
+      - ./coordination:/app/coordination
+      - ./memory:/app/memory
+      - ray_logs:/tmp/ray
+    environment:
+      RAY_HEAD: "true"
+      RAY_DISABLE_IMPORT_WARNING: 1
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-development-public-key}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-development-secret-key}
+      LANGFUSE_HOST: http://langfuse-web:3000
+      QDRANT_URL: http://qdrant:6333
+      VLLM_PHI_URL: http://vllm-phi:8000
+      PYTHONPATH: /app:/app/src
+    depends_on:
+      redis:
+        condition: service_healthy
+      vllm-phi:
+        condition: service_healthy
+    command: >
+      ray start --head --port=6379 --dashboard-host=0.0.0.0 --dashboard-port=8265
+      --object-store-memory=500000000 --block
+    healthcheck:
+      test: ["CMD", "ray", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - vllm-network
+
+  # Memory API service
+  memory-api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.memory
+    container_name: vllm-memory-api
+    ports:
+      - "8003:8003"
+    volumes:
+      - ./memory:/app/memory
+      - ./coordination:/app/coordination
+    environment:
+      QDRANT_URL: http://qdrant:6333
+      REDIS_URL: redis://redis:6379
+      LANGFUSE_HOST: http://langfuse-web:3000
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-development-public-key}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-development-secret-key}
+      PYTHONPATH: /app:/app/memory
+    depends_on:
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    command: python /app/docker/scripts/start-memory-api.py
+    networks:
+      - vllm-network
+
+networks:
+  vllm-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  redis_data:
+    driver: local
+  clickhouse_data:
+    driver: local
+  qdrant_data:
+    driver: local
+  langfuse_db_data:
+    driver: local
+  vllm_cache:
+    driver: local
+  ray_logs:
+    driver: local
