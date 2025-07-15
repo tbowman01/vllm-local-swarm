@@ -69,7 +69,7 @@ async def test_message_system():
             assert 'class MessageType(Enum):' in content
             assert 'TASK_REQUEST = "task_request"' in content
             assert 'class Priority(Enum):' in content
-            assert 'class Message:' in content or '@dataclass' in content
+            if not ('class Message:' in content or '@dataclass' in content): raise ValueError("Message class or dataclass not found in content")
         
         logger.info("✓ Message system test passed")
         return True
