@@ -18,7 +18,7 @@ services:
 
   # ClickHouse - Long-term trace storage
   clickhouse:
-    image: clickhouse/clickhouse-server:23.8
+    image: clickhouse/clickhouse-server:23.12
     container_name: vllm-clickhouse
     ports:
       - "8123:8123"
