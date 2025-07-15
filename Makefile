@@ -14,6 +14,18 @@ help:
 	@echo "  make compose-build     - Build custom Docker images"
 	@echo "  make compose-clean     - Clean up volumes and images"
 	@echo ""
+	@echo "Service-specific Commands:"
+	@echo "  make build-ray-head    - Build only Ray head service"
+	@echo "  make build-ray-worker  - Build only Ray worker service"
+	@echo "  make build-ray         - Build all Ray services"
+	@echo "  make build-proxy       - Build OpenAI proxy service"
+	@echo "  make up-ray-head       - Start Ray head service"
+	@echo "  make up-ray-worker     - Start Ray worker service"
+	@echo "  make up-basic          - Start basic services (Redis, Qdrant, Langfuse)"
+	@echo "  make logs-ray-head     - View Ray head logs"
+	@echo "  make logs-ray-worker   - View Ray worker logs"
+	@echo "  make logs-langfuse     - View Langfuse logs"
+	@echo ""
 	@echo "Kubernetes Commands:"
 	@echo "  make k8s-install       - Install with Helm on Kubernetes"
 	@echo "  make k8s-uninstall     - Uninstall from Kubernetes"
@@ -30,9 +42,13 @@ help:
 	@echo "  PROFILES=webui         - Include Open WebUI"
 	@echo "  PROFILES=langflow      - Include Langflow"
 	@echo "  PROFILES=large-model   - Include large model service"
+	@echo "  SERVICE=<name>         - Target specific service (build/up/down/logs)"
 	@echo ""
 	@echo "Examples:"
 	@echo "  make compose-up PROFILES=proxy,webui"
+	@echo "  make compose-build SERVICE=ray-head"
+	@echo "  make compose-up SERVICE=ray-worker"
+	@echo "  make compose-logs SERVICE=langfuse-web"
 	@echo "  make k8s-install NAMESPACE=vllm-swarm"
 
 # Variables
@@ -45,7 +61,10 @@ RELEASE_NAME ?= vllm-local-swarm
 compose-up:
 	@echo "Starting vLLM Local Swarm with Docker Compose..."
 	@if [ ! -f .env ]; then cp .env.example .env && echo "Created .env file from .env.example"; fi
-	@if [ -n "$(PROFILES)" ]; then \
+	@if [ -n "$(SERVICE)" ]; then \
+		echo "Starting service: $(SERVICE)"; \
+		docker-compose up -d $(SERVICE); \
+	elif [ -n "$(PROFILES)" ]; then \
 		docker-compose --profile $(shell echo $(PROFILES) | tr ',' ' --profile ') up -d; \
 	else \
 		docker-compose up -d; \
@@ -64,15 +83,30 @@ compose-up:
 
 compose-down:
 	@echo "Stopping vLLM Local Swarm..."
-	docker-compose down
+	@if [ -n "$(SERVICE)" ]; then \
+		echo "Stopping service: $(SERVICE)"; \
+		docker-compose stop $(SERVICE); \
+	else \
+		docker-compose down; \
+	fi
 
 compose-logs:
-	@echo "Showing logs from all services..."
-	docker-compose logs -f
+	@echo "Showing logs from services..."
+	@if [ -n "$(SERVICE)" ]; then \
+		echo "Showing logs for service: $(SERVICE)"; \
+		docker-compose logs -f $(SERVICE); \
+	else \
+		docker-compose logs -f; \
+	fi
 
 compose-build:
 	@echo "Building custom Docker images..."
-	docker-compose build --no-cache
+	@if [ -n "$(SERVICE)" ]; then \
+		echo "Building service: $(SERVICE)"; \
+		docker-compose build --no-cache $(SERVICE); \
+	else \
+		docker-compose build --no-cache; \
+	fi
 
 compose-clean:
 	@echo "Cleaning up Docker resources..."
@@ -180,6 +214,54 @@ quick-start: check-deps compose-up
 
 dev-start: install-deps compose-up
 	@echo "Development environment started!"
+
+# Service-specific build targets
+build-ray-head:
+	@echo "Building Ray head service..."
+	docker-compose build --no-cache ray-head
+
+build-ray-worker:
+	@echo "Building Ray worker service..."
+	docker-compose build --no-cache ray-worker
+
+build-ray: build-ray-head build-ray-worker
+	@echo "Built all Ray services"
+
+build-proxy:
+	@echo "Building OpenAI proxy service..."
+	docker-compose build --no-cache openai-proxy
+
+build-all-custom: build-ray build-proxy
+	@echo "Built all custom services"
+
+# Service-specific start targets
+up-ray-head:
+	@echo "Starting Ray head service..."
+	docker-compose up -d ray-head
+
+up-ray-worker:
+	@echo "Starting Ray worker service..."
+	docker-compose up -d ray-worker
+
+up-ray: up-ray-head up-ray-worker
+	@echo "Started all Ray services"
+
+up-basic:
+	@echo "Starting basic services (Redis, Qdrant, Langfuse)..."
+	docker-compose up -d redis qdrant langfuse-db langfuse-web
+
+# Service-specific logs
+logs-ray-head:
+	@echo "Showing Ray head logs..."
+	docker-compose logs -f ray-head
+
+logs-ray-worker:
+	@echo "Showing Ray worker logs..."
+	docker-compose logs -f ray-worker
+
+logs-langfuse:
+	@echo "Showing Langfuse logs..."
+	docker-compose logs -f langfuse-web
 
 # Aliases for convenience
 up: compose-up
