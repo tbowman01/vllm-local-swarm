@@ -1,0 +1,43 @@
+# Dockerfile for Memory System API
+
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements first for better caching
+COPY requirements.memory.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.memory.txt
+
+# Copy memory system code
+COPY memory/ ./memory/
+COPY config/ ./config/
+
+# Create necessary directories
+RUN mkdir -p /app/memory /app/logs
+
+# Copy startup script
+COPY docker/scripts/start-memory-api.py ./start-memory-api.py
+
+# Expose port
+EXPOSE 8090
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:8090/health || exit 1
+
+# Set environment variables
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+# Run the memory API
+CMD ["python", "start-memory-api.py"]

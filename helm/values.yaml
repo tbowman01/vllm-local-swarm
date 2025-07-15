@@ -1,0 +1,423 @@
+# Default values for vllm-local-swarm
+# This is a YAML-formatted file.
+
+global:
+  # Global image registry
+  imageRegistry: ""
+  # Global image pull secrets
+  imagePullSecrets: []
+  # Global storage class
+  storageClass: ""
+
+# vLLM Configuration
+vllm:
+  # Phi-3.5 model service
+  phi:
+    enabled: true
+    image:
+      registry: docker.io
+      repository: vllm/vllm-openai
+      tag: latest
+      pullPolicy: IfNotPresent
+    model: "microsoft/Phi-3.5-mini-instruct"
+    port: 8000
+    resources:
+      requests:
+        cpu: 2
+        memory: 8Gi
+        nvidia.com/gpu: 1
+      limits:
+        cpu: 4
+        memory: 16Gi
+        nvidia.com/gpu: 1
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    env:
+      VLLM_TENSOR_PARALLEL_SIZE: 1
+      VLLM_GPU_MEMORY_UTILIZATION: 0.8
+      VLLM_MAX_MODEL_LEN: 32768
+      VLLM_TRUST_REMOTE_CODE: true
+    service:
+      type: ClusterIP
+      port: 8000
+    persistence:
+      enabled: true
+      size: 50Gi
+      storageClass: ""
+      accessMode: ReadWriteOnce
+
+  # Large model service (optional)
+  large:
+    enabled: false
+    image:
+      registry: docker.io
+      repository: vllm/vllm-openai
+      tag: latest
+      pullPolicy: IfNotPresent
+    model: "microsoft/DialoGPT-large"
+    port: 8001
+    resources:
+      requests:
+        cpu: 4
+        memory: 16Gi
+        nvidia.com/gpu: 2
+      limits:
+        cpu: 8
+        memory: 32Gi
+        nvidia.com/gpu: 2
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    env:
+      VLLM_TENSOR_PARALLEL_SIZE: 2
+      VLLM_GPU_MEMORY_UTILIZATION: 0.7
+      VLLM_MAX_MODEL_LEN: 8192
+      VLLM_TRUST_REMOTE_CODE: true
+    service:
+      type: ClusterIP
+      port: 8001
+    persistence:
+      enabled: true
+      size: 100Gi
+      storageClass: ""
+      accessMode: ReadWriteOnce
+
+# Ray Cluster Configuration
+ray:
+  enabled: true
+  
+  head:
+    image:
+      registry: docker.io
+      repository: rayproject/ray
+      tag: 2.8.0-py310
+      pullPolicy: IfNotPresent
+    replicas: 1
+    resources:
+      requests:
+        cpu: 2
+        memory: 4Gi
+      limits:
+        cpu: 4
+        memory: 8Gi
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    service:
+      type: ClusterIP
+      ports:
+        dashboard: 8265
+        client: 10001
+    persistence:
+      enabled: true
+      size: 10Gi
+      storageClass: ""
+      accessMode: ReadWriteOnce
+
+  worker:
+    image:
+      registry: docker.io
+      repository: rayproject/ray
+      tag: 2.8.0-py310
+      pullPolicy: IfNotPresent
+    replicas: 2
+    resources:
+      requests:
+        cpu: 1
+        memory: 2Gi
+      limits:
+        cpu: 2
+        memory: 4Gi
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    autoscaling:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 70
+
+# Langfuse Configuration
+langfuse:
+  enabled: true
+  
+  web:
+    image:
+      registry: docker.io
+      repository: langfuse/langfuse
+      tag: "2"
+      pullPolicy: IfNotPresent
+    replicas: 1
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: 1
+        memory: 2Gi
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    service:
+      type: ClusterIP
+      port: 3000
+    ingress:
+      enabled: false
+      className: ""
+      annotations: {}
+      hosts:
+        - host: langfuse.local
+          paths:
+            - path: /
+              pathType: Prefix
+      tls: []
+
+  worker:
+    image:
+      registry: docker.io
+      repository: langfuse/langfuse
+      tag: "2"
+      pullPolicy: IfNotPresent
+    replicas: 1
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+
+# ClickHouse Configuration
+clickhouse:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: clickhouse/clickhouse-server
+    tag: "23.8"
+    pullPolicy: IfNotPresent
+  replicas: 1
+  resources:
+    requests:
+      cpu: 1
+      memory: 2Gi
+    limits:
+      cpu: 2
+      memory: 4Gi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  service:
+    type: ClusterIP
+    ports:
+      http: 8123
+      tcp: 9000
+  persistence:
+    enabled: true
+    size: 20Gi
+    storageClass: ""
+    accessMode: ReadWriteOnce
+  config:
+    maxMemoryUsage: 4000000000
+    maxMemoryUsageForUser: 2000000000
+
+# Qdrant Configuration
+qdrant:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: qdrant/qdrant
+    tag: v1.7.4
+    pullPolicy: IfNotPresent
+  replicas: 1
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 1
+      memory: 2Gi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  service:
+    type: ClusterIP
+    ports:
+      http: 6333
+      grpc: 6334
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: ""
+    accessMode: ReadWriteOnce
+
+# Redis Configuration (from Bitnami dependency)
+redis:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: false
+  master:
+    persistence:
+      enabled: true
+      size: 8Gi
+
+# PostgreSQL Configuration (from Bitnami dependency)
+postgresql:
+  enabled: true
+  auth:
+    database: langfuse
+    username: langfuse
+    password: langfuse123
+  primary:
+    persistence:
+      enabled: true
+      size: 8Gi
+
+# OpenAI Proxy Configuration
+proxy:
+  enabled: false
+  image:
+    registry: docker.io
+    repository: vllm-local-swarm/openai-proxy
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicas: 1
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  service:
+    type: ClusterIP
+    port: 8002
+  config:
+    rateLimitRpm: 100
+    allowedModels: "gpt-4-turbo-preview,gpt-4,gpt-3.5-turbo"
+
+# Open WebUI Configuration
+webui:
+  enabled: false
+  image:
+    registry: ghcr.io
+    repository: open-webui/open-webui
+    tag: main
+    pullPolicy: IfNotPresent
+  replicas: 1
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  service:
+    type: ClusterIP
+    port: 8080
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClass: ""
+    accessMode: ReadWriteOnce
+
+# Langflow Configuration
+langflow:
+  enabled: false
+  image:
+    registry: docker.io
+    repository: langflowai/langflow
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicas: 1
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 1
+      memory: 2Gi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  service:
+    type: ClusterIP
+    port: 7860
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClass: ""
+    accessMode: ReadWriteOnce
+
+# Monitoring and Observability
+monitoring:
+  enabled: false
+  prometheus:
+    enabled: false
+  grafana:
+    enabled: false
+
+# RBAC Configuration
+rbac:
+  create: true
+
+# Service Account Configuration
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# Pod Security Context
+podSecurityContext:
+  fsGroup: 1000
+
+# Security Context
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: false
+  allowPrivilegeEscalation: false
+
+# Network Policies
+networkPolicy:
+  enabled: false
+
+# Pod Disruption Budget
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+# Secrets Configuration
+secrets:
+  langfuse:
+    secretKey: "your-secret-key-change-this-in-production"
+    salt: "your-salt-change-this-in-production"
+    encryptionKey: "your-encryption-key-32-chars-long"
+  clickhouse:
+    password: "langfuse123"
+  openai:
+    apiKey: ""
+
+# Configuration Maps
+configMaps:
+  clickhouse:
+    config: |
+      <!-- ClickHouse configuration will be injected here -->
+
+# KEDA Autoscaling (optional)
+keda:
+  enabled: false
+  scaledObjects: []

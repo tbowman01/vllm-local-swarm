@@ -1,0 +1,17 @@
+{{- if and .Values.vllm.phi.enabled .Values.vllm.phi.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "vllm-local-swarm.fullname" . }}-vllm-phi-cache
+  labels:
+    {{- include "vllm-local-swarm.vllm-phi.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.vllm.phi.persistence.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.vllm.phi.persistence.size }}
+  {{- if or .Values.vllm.phi.persistence.storageClass .Values.global.storageClass }}
+  storageClassName: {{ include "vllm-local-swarm.storageClass" .Values.vllm.phi.persistence }}
+  {{- end }}
+{{- end }}

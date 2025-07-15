@@ -1,0 +1,288 @@
+# Docker Compose for Memory and Observability Services
+# Complete memory stack with Redis, Qdrant, Langfuse, and ClickHouse
+
+version: '3.8'
+
+services:
+  # Redis - Session Memory and Langfuse Queue
+  redis:
+    image: redis:7-alpine
+    container_name: vllm-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+      - ./config/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    command: redis-server /usr/local/etc/redis/redis.conf
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - memory_network
+
+  # Qdrant - Vector Database for Semantic Memory
+  qdrant:
+    image: qdrant/qdrant:v1.7.4
+    container_name: vllm-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+      - ./config/qdrant_config.yaml:/qdrant/config/production.yaml:ro
+    environment:
+      - QDRANT__SERVICE__HTTP_PORT=6333
+      - QDRANT__SERVICE__GRPC_PORT=6334
+      - QDRANT__LOG_LEVEL=INFO
+      - QDRANT__STORAGE__STORAGE_PATH=/qdrant/storage
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - memory_network
+
+  # ClickHouse - Analytics and Long-term Storage
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.11-alpine
+    container_name: vllm-clickhouse
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_logs:/var/log/clickhouse-server
+      - ./config/clickhouse_config.xml:/etc/clickhouse-server/config.xml:ro
+      - ./config/clickhouse_users.xml:/etc/clickhouse-server/users.xml:ro
+    environment:
+      - CLICKHOUSE_DB=${CLICKHOUSE_DATABASE:-langfuse}
+      - CLICKHOUSE_USER=${CLICKHOUSE_USERNAME:-default}
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - memory_network
+
+  # Langfuse - Observability Platform
+  langfuse-web:
+    image: langfuse/langfuse:latest
+    container_name: vllm-langfuse-web
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=clickhouse://${CLICKHOUSE_USERNAME:-default}:${CLICKHOUSE_PASSWORD:-}@clickhouse:8123/${CLICKHOUSE_DATABASE:-langfuse}
+      - REDIS_CONNECTION_STRING=redis://redis:6379
+      - NEXTAUTH_SECRET=${LANGFUSE_SECRET:-your-secret-key}
+      - NEXTAUTH_URL=http://localhost:3000
+      - LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES=true
+      - TELEMETRY_ENABLED=false
+      - LANGFUSE_CSP_ENFORCE_HTTPS=false
+    volumes:
+      - ./config/langfuse:/app/config:ro
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/public/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - memory_network
+
+  # Langfuse Worker - Background Processing
+  langfuse-worker:
+    image: langfuse/langfuse:latest
+    container_name: vllm-langfuse-worker
+    command: ["node", "worker.js"]
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=clickhouse://${CLICKHOUSE_USERNAME:-default}:${CLICKHOUSE_PASSWORD:-}@clickhouse:8123/${CLICKHOUSE_DATABASE:-langfuse}
+      - REDIS_CONNECTION_STRING=redis://redis:6379
+      - LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES=true
+      - TELEMETRY_ENABLED=false
+      - WORKER_CONCURRENCY=4
+    volumes:
+      - ./config/langfuse:/app/config:ro
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - memory_network
+
+  # Memory System API - Main Memory Service
+  memory-api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.memory
+    container_name: vllm-memory-api
+    ports:
+      - "8090:8090"
+    environment:
+      # Redis Configuration
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      
+      # Qdrant Configuration
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - QDRANT_COLLECTION=agent_memory
+      - QDRANT_VECTOR_SIZE=384
+      
+      # Langfuse Configuration
+      - LANGFUSE_HOST=langfuse-web
+      - LANGFUSE_PORT=3000
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      
+      # ClickHouse Configuration
+      - CLICKHOUSE_HOST=clickhouse
+      - CLICKHOUSE_PORT=8123
+      - CLICKHOUSE_DATABASE=${CLICKHOUSE_DATABASE:-langfuse}
+      - CLICKHOUSE_USERNAME=${CLICKHOUSE_USERNAME:-default}
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-}
+      
+      # General Configuration
+      - MEMORY_RETENTION_DAYS=30
+      - MAX_SESSION_MEMORY_MB=100
+      - SEMANTIC_MEMORY_ENABLED=true
+      - SESSION_MEMORY_ENABLED=true
+      - OBSERVABILITY_ENABLED=true
+      
+      # Embedding Configuration
+      - EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+      - EMBEDDING_DEVICE=cpu
+      - EMBEDDING_BATCH_SIZE=32
+    volumes:
+      - memory_data:/app/memory
+      - memory_logs:/app/logs
+      - ./config/memory:/app/config:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      langfuse-web:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - memory_network
+
+  # Memory Analytics Dashboard
+  memory-dashboard:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dashboard
+    container_name: vllm-memory-dashboard
+    ports:
+      - "8091:8091"
+    environment:
+      - MEMORY_API_URL=http://memory-api:8090
+      - CLICKHOUSE_URL=http://clickhouse:8123
+      - LANGFUSE_URL=http://langfuse-web:3000
+      - QDRANT_URL=http://qdrant:6333
+    depends_on:
+      memory-api:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - memory_network
+
+  # Grafana - Advanced Analytics Dashboard (Optional)
+  grafana:
+    image: grafana/grafana:10.2.2
+    container_name: vllm-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_INSTALL_PLUGINS=grafana-clickhouse-datasource
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_USERS_ALLOW_ORG_CREATE=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./config/grafana:/etc/grafana/provisioning:ro
+    depends_on:
+      - clickhouse
+    restart: unless-stopped
+    networks:
+      - memory_network
+
+  # Prometheus - Metrics Collection (Optional)
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: vllm-prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    volumes:
+      - prometheus_data:/prometheus
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    restart: unless-stopped
+    networks:
+      - memory_network
+
+volumes:
+  redis_data:
+    driver: local
+  qdrant_data:
+    driver: local
+  clickhouse_data:
+    driver: local
+  clickhouse_logs:
+    driver: local
+  memory_data:
+    driver: local
+  memory_logs:
+    driver: local
+  grafana_data:
+    driver: local
+  prometheus_data:
+    driver: local
+
+networks:
+  memory_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# Health Check and Monitoring
+x-healthcheck-common: &healthcheck-common
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 30s

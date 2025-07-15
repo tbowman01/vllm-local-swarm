@@ -1,0 +1,111 @@
+{{- if .Values.vllm.phi.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "vllm-local-swarm.fullname" . }}-vllm-phi
+  labels:
+    {{- include "vllm-local-swarm.vllm-phi.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "vllm-local-swarm.vllm-phi.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "vllm-local-swarm.vllm-phi.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "vllm-local-swarm.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: vllm-phi
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ include "vllm-local-swarm.imageRegistry" . }}{{ .Values.vllm.phi.image.repository }}:{{ .Values.vllm.phi.image.tag }}"
+          imagePullPolicy: {{ .Values.vllm.phi.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.vllm.phi.port }}
+              protocol: TCP
+          command:
+            - python
+            - -m
+            - vllm.entrypoints.openai.api_server
+          args:
+            - --model
+            - {{ .Values.vllm.phi.model }}
+            - --host
+            - "0.0.0.0"
+            - --port
+            - "{{ .Values.vllm.phi.port }}"
+            - --tensor-parallel-size
+            - "{{ .Values.vllm.phi.env.VLLM_TENSOR_PARALLEL_SIZE }}"
+            - --gpu-memory-utilization
+            - "{{ .Values.vllm.phi.env.VLLM_GPU_MEMORY_UTILIZATION }}"
+            - --max-model-len
+            - "{{ .Values.vllm.phi.env.VLLM_MAX_MODEL_LEN }}"
+            - --trust-remote-code
+            - --served-model-name
+            - phi-3.5-mini
+          env:
+            - name: VLLM_HOST
+              value: "0.0.0.0"
+            - name: VLLM_PORT
+              value: "{{ .Values.vllm.phi.port }}"
+            - name: VLLM_MODEL
+              value: {{ .Values.vllm.phi.model }}
+            - name: VLLM_TENSOR_PARALLEL_SIZE
+              value: "{{ .Values.vllm.phi.env.VLLM_TENSOR_PARALLEL_SIZE }}"
+            - name: VLLM_GPU_MEMORY_UTILIZATION
+              value: "{{ .Values.vllm.phi.env.VLLM_GPU_MEMORY_UTILIZATION }}"
+            - name: VLLM_MAX_MODEL_LEN
+              value: "{{ .Values.vllm.phi.env.VLLM_MAX_MODEL_LEN }}"
+            - name: VLLM_TRUST_REMOTE_CODE
+              value: "{{ .Values.vllm.phi.env.VLLM_TRUST_REMOTE_CODE }}"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            timeoutSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 30
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.vllm.phi.resources | nindent 12 }}
+          volumeMounts:
+            {{- if .Values.vllm.phi.persistence.enabled }}
+            - name: model-cache
+              mountPath: /root/.cache/huggingface
+            {{- end }}
+      volumes:
+        {{- if .Values.vllm.phi.persistence.enabled }}
+        - name: model-cache
+          persistentVolumeClaim:
+            claimName: {{ include "vllm-local-swarm.fullname" . }}-vllm-phi-cache
+        {{- end }}
+      {{- with .Values.vllm.phi.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.vllm.phi.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.vllm.phi.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

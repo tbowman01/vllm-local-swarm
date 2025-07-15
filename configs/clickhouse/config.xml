@@ -1,0 +1,101 @@
+<?xml version="1.0"?>
+<clickhouse>
+    <!-- Listen on all interfaces -->
+    <listen_host>0.0.0.0</listen_host>
+    
+    <!-- HTTP port -->
+    <http_port>8123</http_port>
+    
+    <!-- TCP port -->
+    <tcp_port>9000</tcp_port>
+    
+    <!-- Logging configuration -->
+    <logger>
+        <level>information</level>
+        <log>/var/log/clickhouse-server/clickhouse-server.log</log>
+        <errorlog>/var/log/clickhouse-server/clickhouse-server.err.log</errorlog>
+        <size>1000M</size>
+        <count>10</count>
+    </logger>
+    
+    <!-- Memory settings -->
+    <max_memory_usage>4000000000</max_memory_usage>
+    <max_memory_usage_for_user>2000000000</max_memory_usage_for_user>
+    
+    <!-- Query settings -->
+    <max_execution_time>300</max_execution_time>
+    <max_query_size>268435456</max_query_size>
+    
+    <!-- Storage settings -->
+    <path>/var/lib/clickhouse/</path>
+    <tmp_path>/var/lib/clickhouse/tmp/</tmp_path>
+    <user_files_path>/var/lib/clickhouse/user_files/</user_files_path>
+    
+    <!-- Users configuration -->
+    <users>
+        <default>
+            <password></password>
+            <networks>
+                <ip>::/0</ip>
+            </networks>
+            <profile>default</profile>
+            <quota>default</quota>
+        </default>
+        
+        <langfuse>
+            <password>langfuse123</password>
+            <networks>
+                <ip>::/0</ip>
+            </networks>
+            <profile>default</profile>
+            <quota>default</quota>
+            <databases>
+                <database>langfuse</database>
+            </databases>
+        </langfuse>
+    </users>
+    
+    <!-- Profiles configuration -->
+    <profiles>
+        <default>
+            <max_memory_usage>4000000000</max_memory_usage>
+            <use_uncompressed_cache>0</use_uncompressed_cache>
+            <load_balancing>random</load_balancing>
+        </default>
+    </profiles>
+    
+    <!-- Quotas configuration -->
+    <quotas>
+        <default>
+            <interval>
+                <duration>3600</duration>
+                <queries>0</queries>
+                <errors>0</errors>
+                <result_rows>0</result_rows>
+                <read_rows>0</read_rows>
+                <execution_time>0</execution_time>
+            </interval>
+        </default>
+    </quotas>
+    
+    <!-- Compression settings -->
+    <compression>
+        <case>
+            <method>lz4</method>
+        </case>
+    </compression>
+    
+    <!-- Enable query log -->
+    <query_log>
+        <database>system</database>
+        <table>query_log</table>
+        <flush_interval_milliseconds>7500</flush_interval_milliseconds>
+    </query_log>
+    
+    <!-- Enable part log -->
+    <part_log>
+        <database>system</database>
+        <table>part_log</table>
+        <flush_interval_milliseconds>7500</flush_interval_milliseconds>
+    </part_log>
+</clickhouse>

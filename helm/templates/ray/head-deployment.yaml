@@ -1,0 +1,123 @@
+{{- if .Values.ray.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "vllm-local-swarm.fullname" . }}-ray-head
+  labels:
+    {{- include "vllm-local-swarm.ray-head.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.ray.head.replicas }}
+  selector:
+    matchLabels:
+      {{- include "vllm-local-swarm.ray-head.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "vllm-local-swarm.ray-head.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "vllm-local-swarm.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: ray-head
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ include "vllm-local-swarm.imageRegistry" . }}{{ .Values.ray.head.image.repository }}:{{ .Values.ray.head.image.tag }}"
+          imagePullPolicy: {{ .Values.ray.head.image.pullPolicy }}
+          ports:
+            - name: dashboard
+              containerPort: {{ .Values.ray.head.service.ports.dashboard }}
+              protocol: TCP
+            - name: client
+              containerPort: {{ .Values.ray.head.service.ports.client }}
+              protocol: TCP
+            - name: redis
+              containerPort: 6379
+              protocol: TCP
+          command:
+            - /bin/bash
+            - -c
+          args:
+            - |
+              ray start --head \
+                --port=6379 \
+                --redis-port=6379 \
+                --dashboard-host=0.0.0.0 \
+                --dashboard-port={{ .Values.ray.head.service.ports.dashboard }} \
+                --node-manager-port=8077 \
+                --object-manager-port=8076 \
+                --num-cpus={{ .Values.ray.head.resources.requests.cpu }} \
+                --disable-usage-stats \
+                --verbose && \
+              sleep infinity
+          env:
+            - name: RAY_HEAD
+              value: "true"
+            - name: RAY_DISABLE_IMPORT_WARNING
+              value: "1"
+            - name: LANGFUSE_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vllm-local-swarm.fullname" . }}-secrets
+                  key: langfuse-secret-key
+                  optional: true
+            - name: LANGFUSE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vllm-local-swarm.fullname" . }}-secrets
+                  key: langfuse-secret-key
+                  optional: true
+            - name: LANGFUSE_HOST
+              value: "http://{{ include "vllm-local-swarm.fullname" . }}-langfuse-web:3000"
+            - name: QDRANT_URL
+              value: "http://{{ include "vllm-local-swarm.fullname" . }}-qdrant:6333"
+            - name: VLLM_PHI_URL
+              value: "http://{{ include "vllm-local-swarm.fullname" . }}-vllm-phi:8000"
+          livenessProbe:
+            exec:
+              command:
+                - ray
+                - status
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - ray
+                - status
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.ray.head.resources | nindent 12 }}
+          volumeMounts:
+            {{- if .Values.ray.head.persistence.enabled }}
+            - name: ray-logs
+              mountPath: /tmp/ray
+            {{- end }}
+      volumes:
+        {{- if .Values.ray.head.persistence.enabled }}
+        - name: ray-logs
+          persistentVolumeClaim:
+            claimName: {{ include "vllm-local-swarm.fullname" . }}-ray-head-logs
+        {{- end }}
+      {{- with .Values.ray.head.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ray.head.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ray.head.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

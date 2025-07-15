@@ -42,6 +42,8 @@ This project deploys a **fully self-hosted, SPARC-aligned multi-agent LLM swarm*
 | `K3s/Cilium`    | Lightweight Kubernetes + secure eBPF networking             |
 
 ---
+## System Diagram
+![alt text](image.png)
 
 ## 🚀 Deployment Options
 
