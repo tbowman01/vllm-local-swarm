@@ -34,16 +34,22 @@ async def test_basic_agent_creation():
         
         # Test that agent module structure exists
         agents_path = os.path.join(os.path.dirname(__file__), "src", "core", "agents.py")
-        assert os.path.exists(agents_path), "Agent module file should exist"
+        if not os.path.exists(agents_path):
+            raise FileNotFoundError("Agent module file should exist")
         
         # Test that we can read the agent types from the enum without instantiation
         with open(agents_path, 'r') as f:
             content = f.read()
-            assert 'class AgentType(Enum):' in content
-            assert 'PLANNER = "planner"' in content
-            assert 'RESEARCHER = "researcher"' in content
-            assert 'CODER = "coder"' in content
-            assert 'QA = "qa"' in content
+            if 'class AgentType(Enum):' not in content:
+                raise ValueError("AgentType enum not found in agents.py")
+            if 'PLANNER = "planner"' not in content:
+                raise ValueError("PLANNER agent type not found")
+            if 'RESEARCHER = "researcher"' not in content:
+                raise ValueError("RESEARCHER agent type not found")
+            if 'CODER = "coder"' not in content:
+                raise ValueError("CODER agent type not found")
+            if 'QA = "qa"' not in content:
+                raise ValueError("QA agent type not found")
         
         logger.info("✓ Agent configuration creation test passed")
         return True
@@ -61,15 +67,20 @@ async def test_message_system():
         
         # Test that messaging module exists
         messaging_path = os.path.join(os.path.dirname(__file__), "src", "core", "messaging.py")
-        assert os.path.exists(messaging_path), "Messaging module file should exist"
+        if not os.path.exists(messaging_path):
+            raise FileNotFoundError("Messaging module file should exist")
         
         # Test that we can read the message types from the file
         with open(messaging_path, 'r') as f:
             content = f.read()
-            assert 'class MessageType(Enum):' in content
-            assert 'TASK_REQUEST = "task_request"' in content
-            assert 'class Priority(Enum):' in content
-            if not ('class Message:' in content or '@dataclass' in content): raise ValueError("Message class or dataclass not found in content")
+            if 'class MessageType(Enum):' not in content:
+                raise ValueError("MessageType enum not found in messaging.py")
+            if 'TASK_REQUEST = "task_request"' not in content:
+                raise ValueError("TASK_REQUEST message type not found")
+            if 'class Priority(Enum):' not in content:
+                raise ValueError("Priority enum not found")
+            if 'class Message:' not in content and '@dataclass' not in content:
+                raise ValueError("Message class or dataclass not found")
         
         logger.info("✓ Message system test passed")
         return True
@@ -90,8 +101,10 @@ async def test_memory_system():
         # Just test that classes can be imported and basic structures work
         
         # Test MemoryType enum
-        assert MemoryType.SESSION.value == "session"
-        assert MemoryType.SEMANTIC.value == "semantic"
+        if MemoryType.SESSION.value != "session":
+            raise ValueError(f"Expected MemoryType.SESSION.value to be 'session', got '{MemoryType.SESSION.value}'")
+        if MemoryType.SEMANTIC.value != "semantic":
+            raise ValueError(f"Expected MemoryType.SEMANTIC.value to be 'semantic', got '{MemoryType.SEMANTIC.value}'")
         
         # Test MemoryEntry structure
         entry = MemoryEntry(
@@ -101,8 +114,10 @@ async def test_memory_system():
             metadata={},
             timestamp=datetime.now()
         )
-        if entry.id != "test_id": raise ValueError("Entry ID does not match expected value.")
-        assert entry.type == MemoryType.SESSION
+        if entry.id != "test_id":
+            raise ValueError(f"Expected entry.id to be 'test_id', got '{entry.id}'")
+        if entry.type != MemoryType.SESSION:
+            raise ValueError(f"Expected entry.type to be MemoryType.SESSION, got '{entry.type}'")
         
         logger.info("✓ Memory system test passed")
         return True
@@ -117,12 +132,14 @@ async def test_coordination_system():
     try:
         # Test that coordination directory exists and has expected structure
         coordination_dir = Path(__file__).parent / "coordination"
-        assert coordination_dir.exists()
+        if not coordination_dir.exists():
+            raise FileNotFoundError(f"Coordination directory not found at {coordination_dir}")
         
         expected_dirs = ["memory_bank", "orchestration", "subtasks"]
         for dirname in expected_dirs:
             dir_path = coordination_dir / dirname
-            assert dir_path.exists(), f"Expected directory {dirname} not found"
+            if not dir_path.exists():
+                raise FileNotFoundError(f"Expected directory {dirname} not found at {dir_path}")
         
         logger.info("✓ Coordination system structure test passed")
         return True
@@ -176,7 +193,8 @@ async def test_cli_interface():
         
         # Test client creation (without full initialization)
         client = SPARCClient()
-        assert client is not None
+        if client is None:
+            raise ValueError("SPARCClient creation failed - returned None")
         
         logger.info("✓ CLI interface test passed")
         return True
