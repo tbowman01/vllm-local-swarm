@@ -7,7 +7,7 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes --maxmemory 2gb --maxmemory-policy allkeys-lru
+    command: redis-server --appendonly yes --maxmemory ${REDIS_MAX_MEMORY:-1gb} --maxmemory-policy allkeys-lru
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -18,7 +18,7 @@ services:
 
   # ClickHouse - Long-term trace storage
   clickhouse:
-    image: clickhouse/clickhouse-server:23.12
+    image: clickhouse/clickhouse-server:23.8
     container_name: vllm-clickhouse
     ports:
       - "8123:8123"
@@ -84,15 +84,20 @@ services:
     depends_on:
       langfuse-db:
         condition: service_healthy
+      clickhouse:
+        condition: service_healthy
     ports:
       - "3000:3000"
     environment:
       DATABASE_URL: postgresql://langfuse:${LANGFUSE_DB_PASSWORD:-langfuse123}@langfuse-db:5432/langfuse
-      NEXTAUTH_SECRET: ${LANGFUSE_SECRET:-your-secret-key}
+      NEXTAUTH_SECRET: ${LANGFUSE_SECRET:-vllm-swarm-secret-key-2025-development-mode}
       NEXTAUTH_URL: ${LANGFUSE_URL:-http://localhost:3000}
-      SALT: ${LANGFUSE_SALT:-your-salt}
-      ENCRYPTION_KEY: ${LANGFUSE_ENCRYPTION_KEY:-your-encryption-key}
+      SALT: ${LANGFUSE_SALT:-vllm-swarm-salt-2025-development}
+      ENCRYPTION_KEY: ${LANGFUSE_ENCRYPTION_KEY:-vllm-swarm-encryption-key-32-chars}
       LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: true
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: langfuse
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-langfuse123}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/public/health"]
       interval: 30s
@@ -120,9 +125,9 @@ services:
     networks:
       - vllm-network
 
-  # vLLM - Local model serving (Phi-3.5)
+  # vLLM - CPU-only deployment with smaller model
   vllm-phi:
-    image: vllm/vllm-openai:latest
+    image: vllm/vllm-openai:v0.4.2
     container_name: vllm-phi-server
     ports:
       - "8000:8000"
@@ -132,27 +137,20 @@ services:
     environment:
       VLLM_HOST: 0.0.0.0
       VLLM_PORT: 8000
-      VLLM_MODEL: microsoft/Phi-3.5-mini-instruct
+      VLLM_MODEL: microsoft/DialoGPT-medium
       VLLM_TENSOR_PARALLEL_SIZE: 1
-      VLLM_GPU_MEMORY_UTILIZATION: 0.8
-      VLLM_MAX_MODEL_LEN: 32768
+      VLLM_MAX_MODEL_LEN: 1024
       VLLM_TRUST_REMOTE_CODE: true
+      VLLM_DISABLE_CUSTOM_ALL_REDUCE: true
     command: >
-      --model microsoft/Phi-3.5-mini-instruct
+      --model microsoft/DialoGPT-medium
       --host 0.0.0.0
       --port 8000
       --tensor-parallel-size 1
-      --gpu-memory-utilization 0.8
-      --max-model-len 32768
+      --max-model-len 1024
       --trust-remote-code
-      --served-model-name phi-3.5-mini
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+      --disable-custom-all-reduce
+      --served-model-name phi-cpu
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 60s
@@ -162,104 +160,36 @@ services:
     networks:
       - vllm-network
 
-  # vLLM - Large model serving (configurable)
-  vllm-large:
-    image: vllm/vllm-openai:latest
-    container_name: vllm-large-server
-    ports:
-      - "8001:8001"
-    volumes:
-      - ./models:/app/models
-      - vllm_cache:/root/.cache/huggingface
-    environment:
-      VLLM_HOST: 0.0.0.0
-      VLLM_PORT: 8001
-      VLLM_MODEL: ${LARGE_MODEL:-microsoft/DialoGPT-large}
-      VLLM_TENSOR_PARALLEL_SIZE: ${LARGE_MODEL_TP:-2}
-      VLLM_GPU_MEMORY_UTILIZATION: 0.7
-      VLLM_MAX_MODEL_LEN: 8192
-      VLLM_TRUST_REMOTE_CODE: true
-    command: >
-      --model ${LARGE_MODEL:-microsoft/DialoGPT-large}
-      --host 0.0.0.0
-      --port 8001
-      --tensor-parallel-size ${LARGE_MODEL_TP:-2}
-      --gpu-memory-utilization 0.7
-      --max-model-len 8192
-      --trust-remote-code
-      --served-model-name large-model
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: ${LARGE_MODEL_GPU_COUNT:-2}
-              capabilities: [gpu]
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
-      interval: 60s
-      timeout: 30s
-      retries: 3
-      start_period: 180s
-    networks:
-      - vllm-network
-    profiles:
-      - large-model  # Only start with --profile large-model
-
-  # GPT-4.1 Proxy (Optional)
-  openai-proxy:
-    build:
-      context: ./docker/proxy
-      dockerfile: Dockerfile
-    container_name: vllm-openai-proxy
-    ports:
-      - "8002:8002"
-    environment:
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      PROXY_PORT: 8002
-      RATE_LIMIT_RPM: ${PROXY_RATE_LIMIT:-100}
-      ALLOWED_MODELS: gpt-4-turbo-preview,gpt-4,gpt-3.5-turbo
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    networks:
-      - vllm-network
-    profiles:
-      - proxy  # Only start with --profile proxy
-
-  # Ray Head Node - Orchestration coordinator
+  # Simple Ray setup for CPU
   ray-head:
-    build:
-      context: .
-      dockerfile: docker/ray/Dockerfile.head
+    image: rayproject/ray:2.9.0-py310
     container_name: vllm-ray-head
     ports:
       - "8265:8265"  # Ray Dashboard
       - "10001:10001"  # Ray Client
     volumes:
-      - ./ray:/app/ray
+      - ./src:/app/src
+      - ./agents:/app/agents
       - ./coordination:/app/coordination
       - ./memory:/app/memory
       - ray_logs:/tmp/ray
     environment:
       RAY_HEAD: "true"
-      RAY_REDIS_ADDRESS: redis:6379
-      RAY_OBJECT_STORE_MEMORY: 1000000000
       RAY_DISABLE_IMPORT_WARNING: 1
-      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
-      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-development-public-key}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-development-secret-key}
       LANGFUSE_HOST: http://langfuse-web:3000
       QDRANT_URL: http://qdrant:6333
       VLLM_PHI_URL: http://vllm-phi:8000
-      VLLM_LARGE_URL: http://vllm-large:8001
-      OPENAI_PROXY_URL: http://openai-proxy:8002
+      PYTHONPATH: /app:/app/src
     depends_on:
       redis:
         condition: service_healthy
       vllm-phi:
         condition: service_healthy
+    command: >
+      ray start --head --port=6379 --dashboard-host=0.0.0.0 --dashboard-port=8265
+      --object-store-memory=500000000 --block
     healthcheck:
       test: ["CMD", "ray", "status"]
       interval: 30s
@@ -269,84 +199,32 @@ services:
     networks:
       - vllm-network
 
-  # Ray Worker Nodes
-  ray-worker:
+  # Memory API service
+  memory-api:
     build:
       context: .
-      dockerfile: docker/ray/Dockerfile.worker
+      dockerfile: docker/Dockerfile.memory
+    container_name: vllm-memory-api
+    ports:
+      - "8003:8003"
     volumes:
-      - ./ray:/app/ray
-      - ./coordination:/app/coordination
       - ./memory:/app/memory
-      - ray_logs:/tmp/ray
+      - ./coordination:/app/coordination
     environment:
-      RAY_HEAD: "false"
-      RAY_HEAD_ADDRESS: ray-head:10001
-      RAY_REDIS_ADDRESS: redis:6379
-      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
-      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
-      LANGFUSE_HOST: http://langfuse-web:3000
       QDRANT_URL: http://qdrant:6333
-      VLLM_PHI_URL: http://vllm-phi:8000
-      VLLM_LARGE_URL: http://vllm-large:8001
-      OPENAI_PROXY_URL: http://openai-proxy:8002
+      REDIS_URL: redis://redis:6379
+      LANGFUSE_HOST: http://langfuse-web:3000
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-development-public-key}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-development-secret-key}
+      PYTHONPATH: /app:/app/memory
     depends_on:
-      ray-head:
+      redis:
         condition: service_healthy
-    deploy:
-      replicas: ${RAY_WORKER_REPLICAS:-2}
+      qdrant:
+        condition: service_healthy
+    command: python /app/docker/scripts/start-memory-api.py
     networks:
       - vllm-network
-
-  # Open WebUI (Optional)
-  open-webui:
-    image: ghcr.io/open-webui/open-webui:main
-    container_name: vllm-open-webui
-    ports:
-      - "8080:8080"
-    volumes:
-      - open_webui_data:/app/backend/data
-    environment:
-      OPENAI_API_BASE_URL: http://vllm-phi:8000/v1
-      OPENAI_API_KEY: sk-no-key-required
-      WEBUI_AUTH: false
-      DEFAULT_MODELS: phi-3.5-mini
-    depends_on:
-      vllm-phi:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    networks:
-      - vllm-network
-    profiles:
-      - webui  # Only start with --profile webui
-
-  # Langflow (Optional) - Visual workflow builder
-  langflow:
-    image: langflowai/langflow:latest
-    container_name: vllm-langflow
-    ports:
-      - "7860:7860"
-    volumes:
-      - langflow_data:/app/langflow
-    environment:
-      LANGFLOW_DATABASE_URL: postgresql://langfuse:${LANGFUSE_DB_PASSWORD:-langfuse123}@langfuse-db:5432/langflow
-      LANGFLOW_AUTO_LOGIN: false
-    depends_on:
-      langfuse-db:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7860/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    networks:
-      - vllm-network
-    profiles:
-      - langflow  # Only start with --profile langflow
 
 networks:
   vllm-network:
@@ -367,8 +245,4 @@ volumes:
   vllm_cache:
     driver: local
   ray_logs:
-    driver: local
-  open_webui_data:
-    driver: local
-  langflow_data:
     driver: local

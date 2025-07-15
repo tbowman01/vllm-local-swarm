@@ -1,50 +1,20 @@
 #!/bin/bash
-
-# Ray Worker Node Startup Script
-
 set -e
 
-echo "Starting Ray Worker Node..."
+echo "Starting Ray worker node..."
 
 # Wait for Ray head to be available
-echo "Waiting for Ray head node..."
-until ray status --address=${RAY_HEAD_ADDRESS} > /dev/null 2>&1; do
-  echo "Ray head is unavailable - sleeping"
-  sleep 5
+while ! nc -z ray-head 10001; do
+    echo "Waiting for Ray head to be available..."
+    sleep 2
 done
-echo "Ray head is ready!"
 
-# Join the Ray cluster
-echo "Joining Ray cluster..."
-ray start \
-  --address=${RAY_HEAD_ADDRESS} \
-  --num-cpus=${RAY_NUM_CPUS:-2} \
-  --num-gpus=${RAY_NUM_GPUS:-0} \
-  --object-store-memory=${RAY_OBJECT_STORE_MEMORY:-500000000} \
-  --disable-usage-stats \
-  --verbose
+# Start Ray worker node
+ray start --address=ray-head:10001 \
+    --object-store-memory=1000000000 \
+    --disable-usage-stats
 
-echo "Ray worker joined cluster successfully!"
+echo "Ray worker node started successfully!"
 
-# Start agent processes
-echo "Starting agent processes..."
-cd /app
-python -m ray.agents &
-
-# Keep the container running and monitor Ray
-echo "Monitoring Ray worker..."
-while true; do
-  if ! ray status > /dev/null 2>&1; then
-    echo "Ray worker disconnected! Reconnecting..."
-    ray stop --force
-    sleep 5
-    ray start \
-      --address=${RAY_HEAD_ADDRESS} \
-      --num-cpus=${RAY_NUM_CPUS:-2} \
-      --num-gpus=${RAY_NUM_GPUS:-0} \
-      --object-store-memory=${RAY_OBJECT_STORE_MEMORY:-500000000} \
-      --disable-usage-stats \
-      --verbose
-  fi
-  sleep 30
-done
+# Keep the container running
+tail -f /dev/null
