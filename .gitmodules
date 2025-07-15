@@ -1,0 +1,3 @@
+[submodule "claude-code-usage-monitor"]
+	path = claude-code-usage-monitor
+	url = https://github.com/Maciek-roboblog/Claude-Code-Usage-Monitor.git
