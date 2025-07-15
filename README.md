@@ -42,7 +42,9 @@ This project deploys a **fully self-hosted, SPARC-aligned multi-agent LLM swarm*
 | `K3s/Cilium`    | Lightweight Kubernetes + secure eBPF networking             |
 
 ---
+
 ## System Diagram
+
 ![alt text](image.png)
 
 ## 🚀 Deployment Options
@@ -53,8 +55,30 @@ This project deploys a **fully self-hosted, SPARC-aligned multi-agent LLM swarm*
 git clone https://github.com/your-org/vllm-local-swarm.git
 cd vllm-local-swarm
 cp .env.example .env  # add your GPT-4 key if using proxy
+
+# Install dependencies and run system tests
+pip install -r requirements.txt
+python test_basic_system.py
+
+# Start services
 make compose-up
 ```
+
+### Prerequisites
+
+* Python 3.12+
+* Docker and Docker Compose
+* Redis (for development testing)
+
+### System Validation
+
+Run the basic system tests to ensure all components are working:
+
+```bash
+python test_basic_system.py
+```
+
+All tests should pass before deployment.
 
 ### Option B: K3s + Helm (Multi-Node)
 
@@ -116,7 +140,7 @@ Agents can:
 
 ## 📦 Output Directory Structure
 
-```
+```text
 .
 ├── docker-compose.yml
 ├── helm/
