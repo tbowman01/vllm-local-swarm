@@ -28,7 +28,7 @@ transformers==4.36.0
 torch==2.1.0
 
 # Async support
-asyncio-mqtt==0.13.0
+asyncio-mqtt==0.16.2
 asyncpg==0.29.0
 aiofiles==23.2.1
 httpx==0.25.2
