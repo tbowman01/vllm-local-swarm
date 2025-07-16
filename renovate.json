@@ -1,5 +1,17 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "packageRules": [
+     {
+      "groupName": "high-conf minor & patch",
+      "matchUpdateTypes": ["minor", "patch"],
+      "matchConfidence": ["very high", "high"],
+      "automerge": true
+    },
+    {
+      "matchConfidence": ["low", "neutral"],
+      "dependencyDashboardApproval": true
+    } 
+  ],
   "extends": [
     "config:recommended"
   ]
