@@ -1,6 +1,33 @@
 {
-  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "$schema": "...",
   "extends": [
-    "config:recommended"
+    "config:recommended",
+    "schedule:automergeDaily",
+    ":dependencyDashboard"
+  ],
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "labels": ["renovate", "dependencies"],
+  "platformAutomerge": false,
+  "automergeSchedule": ["before 2pm on weekdays"],
+  "lockFileMaintenance": { "enabled": true, "automerge": true },
+  "packageRules": [
+    {
+      "description": "Automerge non-major, high-confidence updates",
+      "groupName": "high-conf minor & patch",
+      "matchUpdateTypes": ["minor", "patch"],
+      "matchConfidence": ["very high", "high"],
+      "automerge": true
+    },
+    {
+      "matchConfidence": ["low", "neutral"],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Auto-merge common lint/dev tools",
+      "matchDepTypes": ["devDependencies"],
+      "matchPackagePatterns": ["eslint", "prettier"],
+      "automerge": true
+    }
   ]
 }
