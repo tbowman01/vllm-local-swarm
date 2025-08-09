@@ -1,0 +1,447 @@
+# Staging Environment Configuration for vLLM Local Swarm
+# Optimized for testing with reduced resource usage
+
+global:
+  environment: staging
+  imageTag: latest
+  imagePullPolicy: Always
+  
+  # Registry configuration
+  imageRegistry: ghcr.io
+  imageRepository: tbowman01/vllm-local-swarm
+  
+  # Storage class for persistent volumes
+  storageClass: "standard"
+
+# ============================================================================
+# AUTHENTICATION CONFIGURATION
+# ============================================================================
+auth:
+  enabled: true
+  
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 8005
+    
+  # Deployment configuration
+  replicas: 2
+  
+  # Resource limits (reduced for staging)
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+      
+  # Environment variables
+  env:
+    JWT_EXPIRATION_HOURS: "24"
+    REFRESH_TOKEN_EXPIRATION_DAYS: "30"
+    
+  # Health checks
+  healthcheck:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    
+  # Auto-scaling (disabled in staging)
+  autoscaling:
+    enabled: false
+
+# ============================================================================
+# ORCHESTRATOR CONFIGURATION
+# ============================================================================
+orchestrator:
+  enabled: true
+  
+  service:
+    type: ClusterIP
+    port: 8004
+    
+  replicas: 1  # Single replica for staging
+  
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+      
+  # Authentication integration
+  auth:
+    enabled: true
+    requiredPermissions:
+      - "tasks.create"
+      - "tasks.read"
+      - "orchestrator.access"
+
+# ============================================================================
+# DATABASE CONFIGURATION (PostgreSQL)
+# ============================================================================
+postgresql:
+  enabled: true
+  
+  # Authentication
+  auth:
+    postgresPassword: "changeme-staging"  # Override with secret
+    database: "vllm_auth"
+    username: "vllm_user"
+    
+  # Architecture - single instance for staging
+  architecture: standalone
+  
+  # Storage
+  primary:
+    persistence:
+      enabled: true
+      size: 5Gi
+      storageClass: "standard"
+      
+  # Resources (reduced for staging)
+  primary:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+        
+  # Backup (disabled in staging)
+  backup:
+    enabled: false
+
+# ============================================================================
+# REDIS CONFIGURATION
+# ============================================================================
+redis:
+  enabled: true
+  
+  # Architecture - single instance for staging
+  architecture: standalone
+  
+  # Authentication (disabled for staging)
+  auth:
+    enabled: false
+    
+  # Storage
+  master:
+    persistence:
+      enabled: true
+      size: 1Gi
+      storageClass: "standard"
+      
+  # Resources
+  master:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+# ============================================================================
+# VLLM MODEL SERVING
+# ============================================================================
+vllm:
+  # Primary model (Phi-3.5)
+  phi:
+    enabled: true
+    replicas: 1
+    
+    model: "microsoft/Phi-3.5-mini-instruct"
+    
+    service:
+      type: ClusterIP
+      port: 8000
+      
+    resources:
+      requests:
+        cpu: 1
+        memory: 2Gi
+      limits:
+        cpu: 2
+        memory: 4Gi
+        # GPU disabled for staging (use CPU inference)
+        
+    env:
+      VLLM_TENSOR_PARALLEL_SIZE: "1"
+      VLLM_GPU_MEMORY_UTILIZATION: "0.8"
+      
+    # Model caching
+    persistence:
+      enabled: true
+      size: 10Gi
+      
+  # Large model (disabled for staging to save resources)
+  large:
+    enabled: false
+
+# ============================================================================
+# MEMORY SERVICES
+# ============================================================================
+qdrant:
+  enabled: true
+  
+  # Single instance for staging
+  replicas: 1
+  
+  service:
+    type: ClusterIP
+    port: 6333
+    
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+      
+  # Storage
+  persistence:
+    enabled: true
+    size: 5Gi
+    
+# Memory API service
+memoryApi:
+  enabled: true
+  
+  service:
+    type: ClusterIP
+    port: 8003
+    
+  replicas: 1
+  
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+      
+  # Authentication
+  auth:
+    enabled: true
+    requiredPermissions:
+      - "memory.read"
+      - "memory.write"
+
+# ============================================================================
+# OBSERVABILITY STACK
+# ============================================================================
+langfuse:
+  enabled: true
+  
+  # Web service
+  web:
+    replicas: 1
+    
+    service:
+      type: ClusterIP
+      port: 3000
+      
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+        
+    # Ingress for external access
+    ingress:
+      enabled: true
+      className: "nginx"
+      annotations:
+        nginx.ingress.kubernetes.io/ssl-redirect: "false"
+        nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
+      hosts:
+        - host: langfuse-staging.local
+          paths:
+            - path: /
+              pathType: Prefix
+              
+  # Worker service
+  worker:
+    replicas: 1
+    
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+# ClickHouse (disabled for staging to save resources)
+clickhouse:
+  enabled: false
+
+# ============================================================================
+# NETWORKING & INGRESS
+# ============================================================================
+ingress:
+  enabled: true
+  className: "nginx"
+  
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/auth-url: "http://vllm-swarm-staging-auth-service.vllm-swarm-staging.svc.cluster.local:8005/auth/verify"
+    nginx.ingress.kubernetes.io/auth-signin: "http://vllm-staging.local/auth/login"
+    
+  hosts:
+    - host: vllm-staging.local
+      paths:
+        - path: /
+          pathType: Prefix
+          service: orchestrator-auth
+        - path: /auth
+          pathType: Prefix
+          service: auth-service
+        - path: /memory
+          pathType: Prefix
+          service: memory-api
+          
+  tls: []  # No TLS in staging
+
+# ============================================================================
+# MONITORING & OBSERVABILITY
+# ============================================================================
+monitoring:
+  enabled: true
+  
+  # Prometheus (lightweight config)
+  prometheus:
+    enabled: true
+    
+    # Resource limits
+    server:
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+          
+    # Retention (shorter for staging)
+    server:
+      retention: "7d"
+      
+    # Storage
+    server:
+      persistentVolume:
+        enabled: true
+        size: 5Gi
+        
+  # Grafana
+  grafana:
+    enabled: true
+    
+    # Admin credentials
+    adminUser: admin
+    adminPassword: admin  # Change in production!
+    
+    # Resource limits
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+        
+    # Ingress
+    ingress:
+      enabled: true
+      hosts:
+        - grafana-staging.local
+
+# ============================================================================
+# SECURITY CONFIGURATION
+# ============================================================================
+networkPolicy:
+  enabled: false  # Disabled for staging simplicity
+  
+podSecurityPolicy:
+  enabled: false  # Disabled for staging
+  
+# Service mesh (disabled for staging)
+serviceMesh:
+  enabled: false
+  
+# ============================================================================
+# BACKUP & DISASTER RECOVERY
+# ============================================================================
+backup:
+  enabled: false  # Disabled for staging
+  
+# ============================================================================
+# SCALING & RESOURCE MANAGEMENT
+# ============================================================================
+# Horizontal Pod Autoscaling (disabled for staging)
+hpa:
+  enabled: false
+  
+# Vertical Pod Autoscaling (disabled for staging)
+vpa:
+  enabled: false
+  
+# Pod Disruption Budgets (minimal for staging)
+pdb:
+  enabled: true
+  minAvailable: 1
+  
+# Resource quotas for namespace
+resourceQuota:
+  enabled: true
+  hard:
+    requests.cpu: "5"
+    requests.memory: "10Gi"
+    limits.cpu: "10"
+    limits.memory: "20Gi"
+    persistentvolumeclaims: "10"
+
+# ============================================================================
+# DEVELOPMENT & TESTING
+# ============================================================================
+# Test data seeding
+testData:
+  enabled: true
+  createAdminUser: true
+  createSampleUsers: true
+  
+# Debug mode
+debug:
+  enabled: true
+  logLevel: "INFO"
+  
+# Feature flags for staging
+featureFlags:
+  enableAdvancedAuth: true
+  enableRateLimiting: true
+  enableAuditLogging: true
+  enableMetrics: true
+  
+# Development tools
+devTools:
+  enabled: true
+  
+  # Port forwarding helper
+  portForward:
+    enabled: true
+    
+  # Development secrets (not for production!)
+  secrets:
+    jwtSecret: "staging-jwt-secret-not-for-production"
+    databasePassword: "staging-db-password"
+    langfuseSecret: "staging-langfuse-secret"

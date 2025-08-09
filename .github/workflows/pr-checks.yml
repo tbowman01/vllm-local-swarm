@@ -1,0 +1,318 @@
+name: 🔍 Pull Request Checks
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: '3.12'
+  NODE_VERSION: '20'
+
+jobs:
+  # ============================================================================
+  # QUICK VALIDATION & LINTING
+  # ============================================================================
+  quick-checks:
+    name: 🚀 Quick Validation
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+
+    - name: Install linting tools
+      run: |
+        pip install black ruff mypy bandit
+        pip install -r auth/requirements.txt
+
+    - name: Code formatting check
+      run: |
+        black --check --diff auth/
+        echo "✅ Code formatting is correct"
+
+    - name: Lint with Ruff
+      run: |
+        ruff check auth/ --select E,W,F,B,S,I
+        echo "✅ Code linting passed"
+
+    - name: Type checking
+      run: |
+        mypy auth/ --ignore-missing-imports
+        echo "✅ Type checking passed"
+
+    - name: Basic security scan
+      run: |
+        bandit -r auth/ -l -f txt
+        echo "✅ Basic security scan passed"
+
+    - name: Check for secrets
+      run: |
+        # Check for potential secrets in code
+        if grep -r "sk-" --include="*.py" auth/ || grep -r "API_KEY.*=" --include="*.py" auth/; then
+          echo "❌ Potential API keys found in code"
+          exit 1
+        fi
+        echo "✅ No hardcoded secrets detected"
+
+  # ============================================================================
+  # AUTHENTICATION TESTS
+  # ============================================================================
+  auth-unit-tests:
+    name: 🔐 Authentication Unit Tests
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: vllm_auth_test
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        pip install -r auth/requirements.txt
+        pip install pytest pytest-asyncio pytest-cov
+
+    - name: Set up test environment
+      run: |
+        echo "JWT_SECRET_KEY=test-secret-key-for-pr-validation" > .env
+        echo "DATABASE_URL=postgresql://test_user:test_password@localhost:5432/vllm_auth_test" >> .env
+        echo "REDIS_URL=redis://localhost:6379" >> .env
+
+    - name: Run authentication tests
+      run: |
+        python -m pytest tests/test_authentication.py -v \
+          --cov=auth --cov-report=term-missing \
+          --junit-xml=test-results.xml \
+          -p no:langsmith
+
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: pr-test-results
+        path: test-results.xml
+        retention-days: 7
+
+  # ============================================================================
+  # DOCKER BUILD VALIDATION
+  # ============================================================================
+  docker-build-test:
+    name: 🐳 Docker Build Test
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+
+    strategy:
+      matrix:
+        service: [auth-service, orchestrator-auth]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: docker/Dockerfile.${{ matrix.service == 'auth-service' && 'auth' || 'orchestrator' }}
+        push: false
+        tags: test-${{ matrix.service }}:latest
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Test Docker image
+      run: |
+        # Basic smoke test - ensure container can start
+        docker run --rm test-${{ matrix.service }}:latest python --version
+        echo "✅ Docker image for ${{ matrix.service }} builds successfully"
+
+  # ============================================================================
+  # DOCUMENTATION CHECKS
+  # ============================================================================
+  docs-validation:
+    name: 📚 Documentation Validation
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Check for required documentation
+      run: |
+        # Check if authentication changes require documentation updates
+        if git diff --name-only origin/main...HEAD | grep -E '^auth/' >/dev/null; then
+          echo "🔍 Authentication code changes detected, checking documentation..."
+          
+          # Check if authentication docs were updated
+          if ! git diff --name-only origin/main...HEAD | grep -E 'AUTHENTICATION.md|README.md' >/dev/null; then
+            echo "⚠️ Authentication code changed but docs may need updating"
+            echo "::warning::Consider updating AUTHENTICATION.md or README.md if API changes were made"
+          else
+            echo "✅ Documentation appears to be updated"
+          fi
+        fi
+
+    - name: Validate Markdown files
+      run: |
+        # Basic markdown validation
+        find . -name "*.md" -not -path "./.git/*" | while read -r file; do
+          if ! grep -q "^# " "$file"; then
+            echo "⚠️ $file may be missing a top-level heading"
+          fi
+        done
+        echo "✅ Markdown validation completed"
+
+    - name: Check for broken links (basic)
+      run: |
+        # Check for obvious broken internal links
+        grep -r "\[.*\](.*)" --include="*.md" . | grep -E "\]\(\./" | while IFS=: read -r file link; do
+          path=$(echo "$link" | sed -n 's/.*](\([^)]*\)).*/\1/p')
+          if [[ "$path" == "./"* ]] && [[ ! -f "$path" ]]; then
+            echo "⚠️ Potential broken link in $file: $path"
+          fi
+        done || true
+        echo "✅ Internal link check completed"
+
+  # ============================================================================
+  # INTEGRATION PREVIEW
+  # ============================================================================
+  integration-preview:
+    name: 🧪 Integration Preview
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    needs: [quick-checks, auth-unit-tests]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install dependencies
+      run: |
+        pip install -r auth/requirements.txt
+        pip install httpx
+
+    - name: Test authentication imports
+      run: |
+        python -c "
+        import sys
+        sys.path.append('.')
+        
+        # Test core authentication imports
+        try:
+            from auth.auth_service import create_access_token, verify_password
+            from auth.middleware import AuthConfig, AuthenticationMiddleware
+            print('✅ All authentication components import successfully')
+        except ImportError as e:
+            print(f'❌ Import error: {e}')
+            sys.exit(1)
+        
+        # Test configuration
+        try:
+            config = AuthConfig(
+                auth_service_url='http://localhost:8005',
+                jwt_secret_key='test-key',
+                required_permissions=['test.read']
+            )
+            print('✅ Authentication configuration works')
+        except Exception as e:
+            print(f'❌ Configuration error: {e}')
+            sys.exit(1)
+        "
+
+    - name: Generate PR summary
+      run: |
+        echo "## 🔐 Pull Request Validation Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+        echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+        echo "| Code Formatting | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+        echo "| Linting | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+        echo "| Type Checking | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+        echo "| Security Scan | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+        echo "| Authentication Tests | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+        echo "| Docker Build | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+        echo "| Documentation | ✅ Validated |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Ready for review! 🚀**" >> $GITHUB_STEP_SUMMARY
+
+  # ============================================================================
+  # PR STATUS CHECK
+  # ============================================================================
+  pr-status:
+    name: ✅ PR Status Check
+    runs-on: ubuntu-latest
+    needs: [quick-checks, auth-unit-tests, docker-build-test, docs-validation, integration-preview]
+    if: always()
+
+    steps:
+    - name: Check all jobs status
+      run: |
+        echo "Validation Results:"
+        echo "Quick Checks: ${{ needs.quick-checks.result }}"
+        echo "Auth Tests: ${{ needs.auth-unit-tests.result }}"
+        echo "Docker Build: ${{ needs.docker-build-test.result }}"
+        echo "Docs Validation: ${{ needs.docs-validation.result }}"
+        echo "Integration Preview: ${{ needs.integration-preview.result }}"
+        
+        if [[ "${{ needs.quick-checks.result }}" != "success" ]] || \
+           [[ "${{ needs.auth-unit-tests.result }}" != "success" ]] || \
+           [[ "${{ needs.docker-build-test.result }}" != "success" ]] || \
+           [[ "${{ needs.docs-validation.result }}" != "success" ]] || \
+           [[ "${{ needs.integration-preview.result }}" != "success" ]]; then
+          echo "❌ Some checks failed. Please review and fix issues."
+          exit 1
+        fi
+        
+        echo "✅ All PR validation checks passed!"

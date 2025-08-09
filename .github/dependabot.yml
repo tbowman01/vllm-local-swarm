@@ -1,0 +1,145 @@
+version: 2
+updates:
+  # Python dependencies in auth system
+  - package-ecosystem: "pip"
+    directory: "/auth"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "tbowman01"
+    assignees:
+      - "tbowman01"
+    commit-message:
+      prefix: "🔐 auth"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "authentication"
+      - "security"
+    # Security updates
+    allow:
+      - dependency-type: "all"
+    # Group related updates
+    groups:
+      auth-core:
+        patterns:
+          - "fastapi*"
+          - "uvicorn*"
+          - "pydantic*"
+          - "sqlalchemy*"
+      auth-security:
+        patterns:
+          - "passlib*"
+          - "python-jose*"
+          - "bcrypt*"
+          - "cryptography*"
+      auth-database:
+        patterns:
+          - "psycopg2*"
+          - "asyncpg*"
+          - "redis*"
+      testing:
+        patterns:
+          - "pytest*"
+          - "httpx*"
+
+  # Root Python dependencies
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "09:00"
+    open-pull-requests-limit: 3
+    reviewers:
+      - "tbowman01"
+    assignees:
+      - "tbowman01"
+    commit-message:
+      prefix: "📦"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "root-deps"
+    groups:
+      ml-frameworks:
+        patterns:
+          - "torch*"
+          - "transformers*"
+          - "vllm*"
+          - "ray*"
+      data-processing:
+        patterns:
+          - "pandas*"
+          - "numpy*"
+          - "scipy*"
+
+  # Docker base images
+  - package-ecosystem: "docker"
+    directory: "/docker"
+    schedule:
+      interval: "monthly"
+      day: "first-monday"
+      time: "10:00"
+    open-pull-requests-limit: 2
+    reviewers:
+      - "tbowman01"
+    assignees:
+      - "tbowman01"
+    commit-message:
+      prefix: "🐳 docker"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "docker"
+      - "infrastructure"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+      day: "first-monday"
+      time: "11:00"
+    open-pull-requests-limit: 3
+    reviewers:
+      - "tbowman01"
+    assignees:
+      - "tbowman01"
+    commit-message:
+      prefix: "🚀 ci"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "ci-cd"
+
+  # Helm charts (if any)
+  - package-ecosystem: "github-actions"
+    directory: "/helm"
+    schedule:
+      interval: "monthly"
+      day: "second-monday"
+      time: "09:00"
+    open-pull-requests-limit: 2
+    reviewers:
+      - "tbowman01"
+    assignees:
+      - "tbowman01"
+    commit-message:
+      prefix: "⛵ helm"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "helm"
+      - "kubernetes"
+
+# Security-focused configuration
+# Dependabot will automatically:
+# 1. Create PRs for security vulnerabilities immediately
+# 2. Update dependencies to stay within n/n-1/n-2 version range
+# 3. Group related updates to reduce PR noise
+# 4. Schedule updates during business hours for better review

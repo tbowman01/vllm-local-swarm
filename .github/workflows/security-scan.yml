@@ -1,0 +1,385 @@
+name: 🛡️ Scheduled Security Scan
+
+on:
+  schedule:
+    # Run security scan every day at 6 AM UTC
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      scan_type:
+        description: 'Type of security scan'
+        required: false
+        default: 'full'
+        type: choice
+        options:
+        - full
+        - dependencies-only
+        - code-only
+      notify_on_findings:
+        description: 'Create issue on security findings'
+        required: false
+        default: true
+        type: boolean
+
+env:
+  PYTHON_VERSION: '3.12'
+
+jobs:
+  # ============================================================================
+  # DEPENDENCY VULNERABILITY SCANNING
+  # ============================================================================
+  dependency-scan:
+    name: 🔍 Dependency Vulnerabilities
+    runs-on: ubuntu-latest
+    if: github.event.inputs.scan_type != 'code-only'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+
+    - name: Install security scanning tools
+      run: |
+        pip install safety pip-audit
+        pip install -r auth/requirements.txt
+        pip install -r requirements.txt
+
+    - name: Run Safety scan
+      continue-on-error: true
+      run: |
+        echo "## 🔍 Safety Vulnerability Scan" >> security-report.md
+        echo "" >> security-report.md
+        safety check --json --output safety-results.json || true
+        
+        if [ -s safety-results.json ]; then
+          echo "### ⚠️ Vulnerabilities Found:" >> security-report.md
+          safety check --full-report >> security-report.md || true
+        else
+          echo "### ✅ No vulnerabilities found" >> security-report.md
+        fi
+        echo "" >> security-report.md
+
+    - name: Run pip-audit scan
+      continue-on-error: true
+      run: |
+        echo "## 🔍 Pip-Audit Vulnerability Scan" >> security-report.md
+        echo "" >> security-report.md
+        pip-audit --format=json --output=pip-audit-results.json || true
+        
+        if [ -s pip-audit-results.json ]; then
+          echo "### ⚠️ Additional vulnerabilities found:" >> security-report.md
+          pip-audit --format=text >> security-report.md || true
+        else
+          echo "### ✅ No additional vulnerabilities found" >> security-report.md
+        fi
+        echo "" >> security-report.md
+
+    - name: Upload dependency scan results
+      uses: actions/upload-artifact@v4
+      with:
+        name: dependency-scan-results
+        path: |
+          safety-results.json
+          pip-audit-results.json
+          security-report.md
+        retention-days: 30
+
+  # ============================================================================
+  # CODE SECURITY SCANNING
+  # ============================================================================
+  code-security-scan:
+    name: 🔒 Code Security Analysis
+    runs-on: ubuntu-latest
+    if: github.event.inputs.scan_type != 'dependencies-only'
+    
+    permissions:
+      security-events: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+
+    - name: Install code security tools
+      run: |
+        pip install bandit semgrep ruff
+        pip install -r auth/requirements.txt
+
+    - name: Run Bandit security scan
+      continue-on-error: true
+      run: |
+        echo "## 🔍 Bandit Code Security Scan" >> code-security-report.md
+        echo "" >> code-security-report.md
+        bandit -r auth/ -f json -o bandit-results.json || true
+        bandit -r . --exclude ./venv,./env,./.git,./node_modules -f json -o bandit-full-results.json || true
+        
+        if [ -s bandit-results.json ]; then
+          echo "### ⚠️ Security issues found in auth/ directory:" >> code-security-report.md
+          bandit -r auth/ -f txt >> code-security-report.md || true
+        else
+          echo "### ✅ No security issues found in auth/ directory" >> code-security-report.md
+        fi
+        echo "" >> code-security-report.md
+
+    - name: Run Semgrep security scan
+      continue-on-error: true
+      run: |
+        echo "## 🔍 Semgrep Security Analysis" >> code-security-report.md
+        echo "" >> code-security-report.md
+        semgrep --config=p/security-audit auth/ --json -o semgrep-results.json || true
+        
+        if [ -s semgrep-results.json ] && [ "$(cat semgrep-results.json | jq '.results | length')" != "0" ]; then
+          echo "### ⚠️ Semgrep findings:" >> code-security-report.md
+          semgrep --config=p/security-audit auth/ >> code-security-report.md || true
+        else
+          echo "### ✅ No Semgrep security issues found" >> code-security-report.md
+        fi
+        echo "" >> code-security-report.md
+
+    - name: Run Ruff security linting
+      continue-on-error: true
+      run: |
+        echo "## 🔍 Ruff Security Linting" >> code-security-report.md
+        echo "" >> code-security-report.md
+        ruff check auth/ --select S --format json --output-file ruff-security-results.json || true
+        
+        if [ -s ruff-security-results.json ] && [ "$(cat ruff-security-results.json | jq 'length')" != "0" ]; then
+          echo "### ⚠️ Security linting issues:" >> code-security-report.md
+          ruff check auth/ --select S >> code-security-report.md || true
+        else
+          echo "### ✅ No security linting issues found" >> code-security-report.md
+        fi
+        echo "" >> code-security-report.md
+
+    - name: Upload code security scan results
+      uses: actions/upload-artifact@v4
+      with:
+        name: code-security-scan-results
+        path: |
+          bandit-results.json
+          bandit-full-results.json
+          semgrep-results.json
+          ruff-security-results.json
+          code-security-report.md
+        retention-days: 30
+
+  # ============================================================================
+  # DOCKER IMAGE SECURITY SCANNING
+  # ============================================================================
+  docker-security-scan:
+    name: 🐳 Docker Security Scan
+    runs-on: ubuntu-latest
+    if: github.event.inputs.scan_type == 'full'
+
+    strategy:
+      matrix:
+        dockerfile: [
+          { name: "auth", path: "docker/Dockerfile.auth" },
+          { name: "orchestrator", path: "docker/Dockerfile.orchestrator" }
+        ]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build Docker image for scanning
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ${{ matrix.dockerfile.path }}
+        push: false
+        tags: security-scan-${{ matrix.dockerfile.name }}:latest
+        load: true
+
+    - name: Run Trivy security scan
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: security-scan-${{ matrix.dockerfile.name }}:latest
+        format: 'sarif'
+        output: trivy-${{ matrix.dockerfile.name }}-results.sarif
+
+    - name: Upload Trivy scan results
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: trivy-${{ matrix.dockerfile.name }}-results.sarif
+        category: docker-${{ matrix.dockerfile.name }}
+
+    - name: Generate Docker security report
+      run: |
+        echo "## 🐳 Docker Security Scan - ${{ matrix.dockerfile.name }}" >> docker-security-${{ matrix.dockerfile.name }}.md
+        echo "" >> docker-security-${{ matrix.dockerfile.name }}.md
+        
+        # Run Trivy again for human-readable output
+        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+          -v $(pwd):/workspace aquasec/trivy:latest \
+          image --severity HIGH,CRITICAL --format table \
+          security-scan-${{ matrix.dockerfile.name }}:latest >> docker-security-${{ matrix.dockerfile.name }}.md || true
+
+    - name: Upload Docker security report
+      uses: actions/upload-artifact@v4
+      with:
+        name: docker-security-${{ matrix.dockerfile.name }}
+        path: |
+          trivy-${{ matrix.dockerfile.name }}-results.sarif
+          docker-security-${{ matrix.dockerfile.name }}.md
+        retention-days: 30
+
+  # ============================================================================
+  # SECURITY REPORT COMPILATION
+  # ============================================================================
+  compile-security-report:
+    name: 📊 Compile Security Report
+    runs-on: ubuntu-latest
+    needs: [dependency-scan, code-security-scan, docker-security-scan]
+    if: always()
+
+    steps:
+    - name: Download all scan results
+      uses: actions/download-artifact@v4
+      with:
+        path: scan-results/
+
+    - name: Compile comprehensive security report
+      run: |
+        echo "# 🛡️ Security Scan Report - $(date '+%Y-%m-%d %H:%M:%S UTC')" > comprehensive-security-report.md
+        echo "" >> comprehensive-security-report.md
+        echo "## 📊 Scan Summary" >> comprehensive-security-report.md
+        echo "" >> comprehensive-security-report.md
+        
+        # Count total issues
+        TOTAL_ISSUES=0
+        
+        # Check dependency scan results
+        if [ -f "scan-results/dependency-scan-results/safety-results.json" ]; then
+          SAFETY_ISSUES=$(cat scan-results/dependency-scan-results/safety-results.json | jq '.vulnerabilities | length' 2>/dev/null || echo "0")
+          echo "- **Dependency vulnerabilities**: $SAFETY_ISSUES" >> comprehensive-security-report.md
+          TOTAL_ISSUES=$((TOTAL_ISSUES + SAFETY_ISSUES))
+        fi
+        
+        # Check code security results
+        if [ -f "scan-results/code-security-scan-results/bandit-results.json" ]; then
+          BANDIT_ISSUES=$(cat scan-results/code-security-scan-results/bandit-results.json | jq '.results | length' 2>/dev/null || echo "0")
+          echo "- **Code security issues**: $BANDIT_ISSUES" >> comprehensive-security-report.md
+          TOTAL_ISSUES=$((TOTAL_ISSUES + BANDIT_ISSUES))
+        fi
+        
+        echo "- **Total security issues**: $TOTAL_ISSUES" >> comprehensive-security-report.md
+        echo "" >> comprehensive-security-report.md
+        
+        # Include individual reports
+        for report_dir in scan-results/*/; do
+          if [ -d "$report_dir" ]; then
+            echo "## $(basename "$report_dir")" >> comprehensive-security-report.md
+            echo "" >> comprehensive-security-report.md
+            for md_file in "$report_dir"*.md; do
+              if [ -f "$md_file" ]; then
+                cat "$md_file" >> comprehensive-security-report.md
+                echo "" >> comprehensive-security-report.md
+              fi
+            done
+          fi
+        done
+        
+        # Set environment variable for issue creation
+        echo "TOTAL_SECURITY_ISSUES=$TOTAL_ISSUES" >> $GITHUB_ENV
+
+    - name: Create security issue (if needed)
+      if: env.TOTAL_SECURITY_ISSUES != '0' && (github.event.inputs.notify_on_findings == 'true' || github.event_name == 'schedule')
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const report = fs.readFileSync('comprehensive-security-report.md', 'utf8');
+          
+          const title = `🛡️ Security Scan Alert - ${new Date().toISOString().split('T')[0]}`;
+          const body = `
+          ${report}
+          
+          ---
+          
+          **🚨 Action Required**: Please review and address the security findings above.
+          
+          **📊 Summary**: ${process.env.TOTAL_SECURITY_ISSUES} security issues detected
+          
+          **🔍 Scan triggered by**: ${context.eventName === 'schedule' ? 'Scheduled scan' : 'Manual trigger'}
+          
+          **⏰ Scan date**: ${new Date().toISOString()}
+          
+          ---
+          
+          💡 **Tips**:
+          - Review dependency vulnerabilities first (usually easiest to fix)
+          - Check code security issues for potential security bugs
+          - Update Docker base images if vulnerabilities are found
+          - Run \`make test-security\` locally to verify fixes
+          `;
+          
+          // Check if similar issue already exists
+          const issues = await github.rest.issues.listForRepo({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            state: 'open',
+            labels: 'security,automated'
+          });
+          
+          const existingIssue = issues.data.find(issue => 
+            issue.title.includes('Security Scan Alert')
+          );
+          
+          if (existingIssue) {
+            // Update existing issue
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: existingIssue.number,
+              body: `## 🔄 Updated Security Scan Results\n\n${body}`
+            });
+          } else {
+            // Create new issue
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              body: body,
+              labels: ['security', 'automated', 'high-priority']
+            });
+          }
+
+    - name: Upload comprehensive security report
+      uses: actions/upload-artifact@v4
+      with:
+        name: comprehensive-security-report
+        path: comprehensive-security-report.md
+        retention-days: 90
+
+    - name: Post scan summary
+      run: |
+        echo "## 🛡️ Security Scan Completed" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Total Issues Found**: ${{ env.TOTAL_SECURITY_ISSUES }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Scan Type**: ${{ github.event.inputs.scan_type || 'full' }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Timestamp**: $(date '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [ "${{ env.TOTAL_SECURITY_ISSUES }}" != "0" ]; then
+          echo "⚠️ **Action required**: Security issues were found. Check the artifacts for detailed reports." >> $GITHUB_STEP_SUMMARY
+        else
+          echo "✅ **All clear**: No security issues detected." >> $GITHUB_STEP_SUMMARY
+        fi
