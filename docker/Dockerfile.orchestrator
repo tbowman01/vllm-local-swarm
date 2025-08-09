@@ -5,34 +5,48 @@ WORKDIR /app
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     curl \
+    gcc \
+    g++ \
+    build-essential \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements
 COPY requirements.txt .
+COPY auth/requirements.txt /app/auth/requirements.txt
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r /app/auth/requirements.txt
 
 # Copy application code
 COPY src/ /app/src/
 COPY agents/ /app/agents/
 COPY memory/ /app/memory/
+COPY auth/ /app/auth/
+COPY coordination/ /app/coordination/
 
 # Create orchestrator API
-RUN mkdir -p /app/src/api
+RUN mkdir -p /app/docker/scripts
 
-# Create the orchestrator API service script
-COPY docker/scripts/orchestrator_server.py /app/src/api/orchestrator_server.py
+# Copy the orchestrator service scripts
+COPY docker/scripts/orchestrator_server.py /app/docker/scripts/orchestrator_server.py
+COPY docker/scripts/orchestrator_server_auth.py /app/docker/scripts/orchestrator_server_auth.py
+
+# Create non-root user
+RUN useradd -m -u 1000 orchestrator && chown -R orchestrator:orchestrator /app
+
+USER orchestrator
 
 EXPOSE 8004
 
 # Set environment variables
-ENV PYTHONPATH=/app:/app/src
+ENV PYTHONPATH=/app:/app/src:/app/auth
 ENV ORCHESTRATOR_PORT=8004
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8004/health || exit 1
 
-# Run the orchestrator API service
-CMD ["python", "/app/src/api/orchestrator_server.py"]
+# Run the orchestrator API service with authentication
+CMD ["python", "/app/docker/scripts/orchestrator_server_auth.py"]

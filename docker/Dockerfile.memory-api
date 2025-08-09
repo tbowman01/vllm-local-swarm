@@ -5,27 +5,39 @@ WORKDIR /app
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     curl \
+    gcc \
+    g++ \
+    build-essential \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements
 COPY requirements.txt .
+COPY auth/requirements.txt /app/auth/requirements.txt
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r /app/auth/requirements.txt
 
-# Copy memory system
+# Copy memory system and authentication
 COPY memory/ /app/memory/
+COPY auth/ /app/auth/
 
 # Create memory API
-RUN mkdir -p /app/memory/api
+RUN mkdir -p /app/docker/scripts
 
-# Create the memory API service script
-COPY docker/scripts/memory_api_server.py /app/memory/api/server.py
+# Copy the memory API service script
+COPY docker/scripts/memory_api_server.py /app/docker/scripts/memory_api_server.py
+
+# Create non-root user
+RUN useradd -m -u 1000 memoryapi && chown -R memoryapi:memoryapi /app
+
+USER memoryapi
 
 EXPOSE 8003
 
 # Set environment variables
-ENV PYTHONPATH=/app:/app/memory
+ENV PYTHONPATH=/app:/app/memory:/app/auth
 ENV API_PORT=8003
 
 # Health check
@@ -33,4 +45,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8003/health || exit 1
 
 # Run the memory API service
-CMD ["python", "/app/memory/api/server.py"]
+CMD ["python", "/app/docker/scripts/memory_api_server.py"]

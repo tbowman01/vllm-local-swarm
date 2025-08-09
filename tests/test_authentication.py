@@ -4,6 +4,7 @@ Test suite for Authentication Service
 """
 
 import pytest
+import pytest_asyncio
 import asyncio
 import httpx
 from jose import jwt
@@ -16,13 +17,13 @@ AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://localhost:8005")
 TEST_JWT_SECRET = "test-secret-key"
 TEST_JWT_ALGORITHM = "HS256"
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def async_client():
     """Create an async HTTP client"""
     async with httpx.AsyncClient() as client:
         yield client
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def test_user():
     """Create a test user"""
     return {
@@ -32,7 +33,7 @@ async def test_user():
         "full_name": "Test User"
     }
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def admin_token(async_client):
     """Get admin authentication token"""
     response = await async_client.post(
