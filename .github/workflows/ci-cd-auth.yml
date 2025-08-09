@@ -148,26 +148,71 @@ jobs:
 
     - name: Run authentication unit tests
       run: |
-        # Skip actual HTTP tests in CI and just test auth logic
-        python -c "
+        # Create and run minimal unit tests for CI
+        mkdir -p tests/ci
+        cat > tests/ci/test_auth_components.py << 'EOF'
+        import pytest
         import sys
-        sys.path.append('.')
+        import os
+        sys.path.insert(0, os.path.abspath('.'))
+
         from auth.auth_service import create_access_token, verify_password, get_password_hash
         from auth.middleware import AuthConfig
-        print('✅ Authentication imports successful')
-        token = create_access_token({'user_id': 'ci_test', 'username': 'ci_user'})
-        print('✅ JWT token creation works')
-        hashed = get_password_hash('CI_Test_Password123!')
-        verified = verify_password('CI_Test_Password123!', hashed)
-        print(f'✅ Password hashing works: {verified}')
-        config = AuthConfig(auth_service_url='http://localhost:8005', jwt_secret_key='test-key', required_permissions=['test.read'])
-        print('✅ Auth config works')
-        print('🎉 All authentication components validated!')
-        "
 
-    - name: Test authentication components
+        def test_authentication_imports():
+            """Test that all authentication components can be imported."""
+            assert create_access_token is not None
+            assert verify_password is not None
+            assert get_password_hash is not None
+            assert AuthConfig is not None
+
+        def test_jwt_token_creation():
+            """Test JWT token creation functionality."""
+            token = create_access_token({'user_id': 'test_user', 'username': 'test'})
+            assert token is not None
+            assert isinstance(token, str)
+            assert len(token) > 50  # JWT tokens are typically longer
+
+        def test_password_hashing():
+            """Test password hashing and verification."""
+            password = "TestPassword123!"
+            hashed = get_password_hash(password)
+            assert hashed is not None
+            assert hashed != password  # Should be hashed
+            assert verify_password(password, hashed) is True
+            assert verify_password("WrongPassword", hashed) is False
+
+        def test_auth_config_creation():
+            """Test authentication configuration creation."""
+            config = AuthConfig(
+                auth_service_url="http://localhost:8005",
+                jwt_secret_key="test-secret-key",
+                required_permissions=["test.read"]
+            )
+            assert config is not None
+            assert config.auth_service_url == "http://localhost:8005"
+            assert config.jwt_secret_key == "test-secret-key"
+            assert "test.read" in config.required_permissions
+
+        if __name__ == "__main__":
+            pytest.main([__file__, "-v"])
+        EOF
+
+        # Run the tests with pytest
+        python -m pytest tests/ci/test_auth_components.py -v \
+          --junit-xml=auth-test-results.xml \
+          --cov=auth --cov-report=xml --cov-report=html \
+          -p no:langsmith
+
+    - name: Verify authentication test results
       run: |
-        echo "✅ Authentication tests completed - all components validated"
+        if [ -f "auth-test-results.xml" ]; then
+          echo "✅ Test results file created successfully"
+          echo "Test file size: $(stat -c%s auth-test-results.xml) bytes"
+        else
+          echo "❌ Test results file not found"
+          exit 1
+        fi
 
     - name: Upload test results
       uses: actions/upload-artifact@v4
@@ -182,11 +227,12 @@ jobs:
 
     - name: Publish test results
       uses: dorny/test-reporter@v1
-      if: always()
+      if: always() && hashFiles('auth-test-results.xml') != ''
       with:
         name: Authentication Tests
         path: auth-test-results.xml
         reporter: java-junit
+        fail-on-empty: false
 
   # ============================================================================
   # DOCKER BUILD & PUSH
