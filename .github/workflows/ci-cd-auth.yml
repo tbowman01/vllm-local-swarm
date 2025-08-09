@@ -326,11 +326,27 @@ jobs:
         pip install -r auth/requirements.txt
         pip install pytest httpx redis psycopg2-binary
 
-    - name: Start services with docker-compose
+    - name: Start services for integration testing
       run: |
-        # Start core services for testing
-        docker-compose up -d redis langfuse-db
-        sleep 15
+        # Start services individually to avoid network conflicts
+        docker run -d --name ci-redis -p 6379:6379 redis:7-alpine redis-server
+        docker run -d --name ci-postgres -p 5432:5432 \
+          -e POSTGRES_DB=langfuse \
+          -e POSTGRES_USER=langfuse \
+          -e POSTGRES_PASSWORD=langfuse123 \
+          postgres:15
+        
+        # Wait for services to be ready
+        echo "Waiting for services to start..."
+        sleep 10
+        
+        # Wait for Redis to be ready
+        timeout 30 bash -c 'until docker exec ci-redis redis-cli ping > /dev/null 2>&1; do sleep 1; done'
+        echo "✅ Redis is ready"
+        
+        # Wait for PostgreSQL to be ready
+        timeout 30 bash -c 'until docker exec ci-postgres pg_isready -U langfuse -d langfuse > /dev/null 2>&1; do sleep 1; done'
+        echo "✅ PostgreSQL is ready"
 
     - name: Run integration tests
       run: |
@@ -363,11 +379,11 @@ jobs:
                 import subprocess
                 try:
                     if 'redis' in name.lower():
-                        result = subprocess.run(['docker', 'logs', 'vllm-redis'], 
+                        result = subprocess.run(['docker', 'logs', '--tail', '10', 'ci-redis'], 
                                               capture_output=True, text=True, timeout=5)
                         print(f'   Redis logs: {result.stdout[-200:]}')
                     elif 'postgresql' in name.lower():
-                        result = subprocess.run(['docker', 'logs', 'vllm-langfuse-db'], 
+                        result = subprocess.run(['docker', 'logs', '--tail', '10', 'ci-postgres'], 
                                               capture_output=True, text=True, timeout=5)
                         print(f'   PostgreSQL logs: {result.stdout[-200:]}')
                 except:
@@ -379,7 +395,9 @@ jobs:
 
     - name: Cleanup
       if: always()
-      run: docker-compose down -v
+      run: |
+        docker stop ci-redis ci-postgres || true
+        docker rm ci-redis ci-postgres || true
 
   # ============================================================================
   # DEPLOYMENT
