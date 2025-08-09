@@ -1,5 +1,5 @@
 # Core dependencies
-ray[default]==2.9.0
+ray[default]>=2.47.0
 click>=8.0.0
 asyncio-mqtt
 redis>=4.0.0

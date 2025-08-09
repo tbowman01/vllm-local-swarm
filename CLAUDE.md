@@ -130,6 +130,7 @@ curl -H "X-API-Key: <API_KEY>" http://localhost:8006/stats
 # Security testing
 pytest tests/test_authentication.py -v --cov=auth
 bandit -r auth/ -f json
+- ensure all packages implemented are n, n-1, or n-2, nothing older
 ```
 
 ### 🤖 vLLM Model Serving

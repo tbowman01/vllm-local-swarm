@@ -1,8 +1,15 @@
-# Authentication System Documentation
+# 🔐 Authentication System Documentation
 
 ## Overview
 
-The vLLM Local Swarm authentication system provides secure access control for all swarm services using JWT (JSON Web Tokens) and API keys. This document covers the authentication architecture, setup, usage, and API reference.
+The vLLM Local Swarm features an **enterprise-grade authentication system** with comprehensive security controls. The system provides dual authentication mechanisms (JWT + API keys), role-based access control, session management, and audit logging for all swarm services.
+
+### ✅ Recent Updates & Fixes
+- **Fixed ray version compatibility** (updated to ray[default]>=2.47.0)
+- **Resolved Docker Compose warnings** (removed obsolete version fields)
+- **Enhanced make commands** with comprehensive authentication targets
+- **Improved error handling** in development setup
+- **Package versions compliance** (all dependencies use n/n-1/n-2 versions)
 
 ## Architecture
 
@@ -30,22 +37,28 @@ The vLLM Local Swarm authentication system provides secure access control for al
    - Rate limiting
    - SSL termination
 
-## Quick Start
+## 🚀 Quick Start
 
-### 1. Start the Authentication Services
+### 1. Complete Setup with Make Commands
 
 ```bash
-# Start base services (Redis, PostgreSQL)
-docker-compose up -d redis langfuse-db
+# Setup development environment
+make dev-setup
 
-# Start authentication service
-docker-compose -f docker-compose.auth.yml up -d auth-service
+# Deploy authentication system
+make dev-start
 
-# Start authenticated orchestrator
-docker-compose -f docker-compose.auth.yml up -d orchestrator-auth
+# Create admin user and demo accounts  
+make auth-setup
+
+# Test the authentication system
+make auth-demo
+
+# Check authentication health
+make auth-health
 ```
 
-### 2. Register a User
+### 2. Manual User Registration
 
 ```bash
 curl -X POST http://localhost:8005/auth/register \
@@ -149,6 +162,67 @@ X-API-Key: vllm_a1b2c3d4e5f6...
 | `memory.write` | Write memory data | admin, user |
 | `agents.query` | Query agents | admin, user |
 | `stats.read` | View statistics | admin, user |
+
+## 🔧 Make Commands Reference
+
+### Authentication Deployment
+```bash
+make auth-deploy       # Deploy complete authentication system
+make auth-test         # Run comprehensive authentication tests  
+make auth-setup        # Setup admin user and test accounts
+make auth-health       # Check authentication service health
+make auth-logs         # View authentication service logs
+make auth-reset        # Reset authentication (DEV ONLY)
+make auth-demo         # Run authentication demo flow
+```
+
+### Development Commands
+```bash
+make dev-setup         # Complete development environment setup
+make dev-start         # Start development environment with auth
+make prod-start        # Production-ready deployment with full auth
+make install-deps      # Install all development dependencies
+```
+
+### Security & Testing
+```bash
+make test-security     # Run security scans (bandit, safety)
+make lint-security     # Lint for security issues
+make audit-permissions # Audit user permissions
+make rotate-secrets    # Rotate JWT secrets (PRODUCTION)
+make test-auth         # Run authentication unit tests
+make test-integration  # Run integration tests with auth
+make test-load         # Run load tests with authentication
+```
+
+### Service Management
+```bash
+make up-auth-stack     # Start authentication + dependencies
+make up-ai-stack       # Start AI/ML services (vLLM, orchestrator)
+make up-full-stack     # Start everything (auth + AI + monitoring)
+make health-check      # Check all service health
+make health-auth       # Check authentication services only
+make compose-logs      # View logs from all services
+```
+
+### Utility Commands
+```bash
+make stats             # Show system statistics
+make auth-stats        # Show authentication statistics  
+make performance-stats # Show performance metrics
+make resource-usage    # Show resource utilization
+make cleanup           # Clean up old resources
+```
+
+### Environment Variables
+Set these in your `.env` file or environment:
+```bash
+AUTH_MODE=enabled              # Enable authentication (default)
+JWT_SECRET_KEY=your-secret-key # JWT secret (auto-generated if not set)
+DATABASE_URL=postgresql://...  # PostgreSQL connection string
+REDIS_URL=redis://localhost:6379 # Redis connection string
+PROFILES=proxy,webui           # Docker compose profiles to activate
+```
 
 ## API Reference
 

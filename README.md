@@ -8,14 +8,16 @@
 
 ## Overview
 
-This project deploys a **fully self-hosted, SPARC-aligned multi-agent LLM swarm** using open-source technologies. It is designed for local-first, scalable, and feedback-driven collaborative AI.
+This project deploys a **fully self-hosted, SPARC-aligned multi-agent LLM swarm** with **enterprise-grade authentication** using open-source technologies. It is designed for local-first, scalable, and feedback-driven collaborative AI with comprehensive security and user management.
 
 ### 🎯 Key Capabilities
 
+* **🔐 Enterprise Authentication**: JWT + API key dual authentication with role-based access control
 * Modular agents (Planner, Researcher, Coder, QA, Critic, Judge)
 * Distributed orchestration with Ray (SwarmCoordinator)
 * Fast local inference with vLLM (Phi-3.5, Gemini 1.5 Pro)
 * Optional fallback to GPT-4.1 via proxy
+* **🛡️ Security-First**: User management, session handling, rate limiting, and audit logging
 * Langfuse + ClickHouse + Redis for observability and memory
 * Visual agent workflow building via Langflow
 * Autoscaling via KEDA
@@ -27,14 +29,15 @@ This project deploys a **fully self-hosted, SPARC-aligned multi-agent LLM swarm*
 
 ## 🔧 Architecture Components
 
-| Component       | Description                                                 | Status |
-| --------------- | ----------------------------------------------------------- | ------ |
-| `Ray`           | Agent orchestration + SwarmCoordinator                      | ✅ Core |
-| `vLLM`          | Inference engine for serving local models (Phi-3.5)         | ✅ Core |
-| `Langfuse`      | Observability layer (tracing, scoring, structured logs)     | ✅ Core |
-| `Redis`         | Fast in-memory short-term state & Langfuse queue            | ✅ Core |
-| `Qdrant`        | Vector DB for persistent semantic memory                    | ✅ Core |
-| `PostgreSQL`    | Primary database for Langfuse                              | ✅ Core |
+| Component           | Description                                                 | Status |
+| ------------------- | ----------------------------------------------------------- | ------ |
+| **🔐 Auth Service** | **JWT + API key authentication with user management**       | **✅ Core** |
+| `Ray`               | Agent orchestration + SwarmCoordinator                      | ✅ Core |
+| `vLLM`              | Inference engine for serving local models (Phi-3.5)         | ✅ Core |
+| `Langfuse`          | Observability layer (tracing, scoring, structured logs)     | ✅ Core |
+| `Redis`             | Fast in-memory short-term state, sessions & Langfuse queue  | ✅ Core |
+| `Qdrant`            | Vector DB for persistent semantic memory                    | ✅ Core |
+| `PostgreSQL`        | Primary database for Langfuse + user authentication        | ✅ Core |
 | `ClickHouse`    | Optional long-term structured trace store                   | 🔄 Optional |
 | `GPT-4.1 Proxy` | Optional HTTP-based fallback to OpenAI                      | 🔄 Optional |
 | `Langflow`      | Visual graph builder for agent workflows                    | 🔄 Optional |
@@ -44,11 +47,52 @@ This project deploys a **fully self-hosted, SPARC-aligned multi-agent LLM swarm*
 
 ---
 
+## 🔐 Authentication System
+
+### Enterprise-Grade Security Features
+
+* **Dual Authentication**: JWT tokens + API keys for flexible access control
+* **Role-Based Access Control (RBAC)**: Admin, user, and viewer roles with granular permissions
+* **Session Management**: Secure token refresh and blacklisting via Redis
+* **Rate Limiting**: Configurable request limits per user/IP
+* **Audit Logging**: Complete activity tracking for security compliance
+* **Password Security**: bcrypt hashing with configurable complexity
+* **API Security**: CORS protection, security headers, and input validation
+
+### Authentication Architecture
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Client App    │───▶│  Auth Service    │───▶│   PostgreSQL    │
+│                 │    │  (Port: 8005)    │    │  (User Store)   │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+         │                       │                       │
+         │              ┌────────▼────────┐              │
+         │              │     Redis       │              │
+         │              │  (Sessions)     │              │
+         │              └─────────────────┘              │
+         │                                               │
+         ▼              ┌─────────────────────────────────▼──┐
+┌─────────────────┐    │         Protected Services         │
+│  Nginx Proxy    │───▶│  • Orchestrator (8006)            │
+│  (Port: 80)     │    │  • Memory API (8007)              │
+└─────────────────┘    │  • vLLM Models (8000, 8001)       │
+                       └────────────────────────────────────┘
+```
+
+### User Roles & Permissions
+
+| Role    | Permissions                                              |
+|---------|----------------------------------------------------------|
+| **Admin**   | Full system access, user management, service config     |
+| **User**    | Create tasks, access agents, manage own API keys        |
+| **Viewer**  | Read-only access to tasks, results, and system metrics  |
+
 ## System Diagram
 
 ![alt text](image.png)
 
-## 🚀 Quick Start
+## 🚀 Quick Start with Authentication
 
 ### Prerequisites
 - **OS**: Linux, macOS, or Windows (with WSL2)
@@ -57,36 +101,44 @@ This project deploys a **fully self-hosted, SPARC-aligned multi-agent LLM swarm*
 - **Docker**: Docker Engine 20.10+ and Docker Compose 2.0+
 - **Python**: 3.10+ (for development)
 
-### Option A: Docker Compose (Recommended)
+### Option A: Secure Deployment with Authentication (Recommended)
 
 ```bash
 git clone https://github.com/tbowman01/vllm-local-swarm.git
 cd vllm-local-swarm
-cp .env.example .env  # Configure your environment
 
-# Quick start with basic services
-make up-basic
-make build-ray
-make up-ray
+# Setup development environment with authentication
+make dev-setup
 
-# Or start everything at once
-make compose-up
+# Deploy with authentication enabled
+make dev-start
+
+# Create admin user and demo accounts
+make auth-setup
+
+# Test authentication system
+make auth-demo
 ```
 
-### Option B: Step-by-Step Setup
+**🔓 Access Your Authenticated Services:**
+- **Authentication API**: http://localhost:8005
+- **Orchestrator**: http://localhost:8006 (requires authentication)
+- **Memory API**: http://localhost:8007 (requires authentication) 
+- **Web UI**: http://localhost (via Nginx proxy)
+
+### Option B: Development Without Authentication
 
 ```bash
-# 1. Start basic services first
-make up-basic
+git clone https://github.com/tbowman01/vllm-local-swarm.git
+cd vllm-local-swarm
 
-# 2. Build and start Ray services
-make build-ray-head
-make up-ray-head
+# Install dependencies only
+make install-deps
 
-# 3. Optional: Add additional services
-make compose-up PROFILES=proxy,webui
+# Start basic services without auth
+make quick-start
 
-# 4. Check system health
+# Check system health
 make health-check
 ```
 

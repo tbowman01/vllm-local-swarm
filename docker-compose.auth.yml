@@ -1,4 +1,5 @@
-version: '3.8'
+# Docker Compose file for authentication services
+# Note: version field is obsolete in Docker Compose v2+
 
 services:
   # Authentication Service
@@ -59,8 +60,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      memory-api:
-        condition: service_healthy
+      # memory-api from main compose file
     command: python /app/docker/scripts/orchestrator_server.py
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
@@ -133,9 +133,5 @@ networks:
     external: true
 
 volumes:
-  redis_data:
-    external: true
-  langfuse_db_data:
-    external: true
-  qdrant_data:
-    external: true
+  # Note: redis_data, langfuse_db_data, and qdrant_data are defined in main docker-compose.yml
+  # These volumes are shared between the main and auth services

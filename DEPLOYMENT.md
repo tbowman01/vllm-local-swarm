@@ -1,33 +1,44 @@
-# vLLM Local Swarm - Deployment Guide
+# 🚀 vLLM Local Swarm - Deployment Guide
 
-This guide provides comprehensive instructions for deploying the vLLM Local Swarm system using Docker Compose or Kubernetes.
+This guide provides comprehensive instructions for deploying the vLLM Local Swarm system with **enterprise-grade authentication** using Docker Compose or Kubernetes.
 
 ## 📋 Table of Contents
 
+- [🔐 Authentication-First Deployment](#-authentication-first-deployment)
 - [Quick Start](#quick-start)
 - [Prerequisites](#prerequisites)
 - [Docker Compose Deployment](#docker-compose-deployment)
 - [Kubernetes Deployment](#kubernetes-deployment)
-- [Configuration](#configuration)
+- [Authentication Configuration](#authentication-configuration)
 - [Service Overview](#service-overview)
-- [Monitoring & Observability](#monitoring--observability)
+- [Security & Monitoring](#security--monitoring)
 - [Troubleshooting](#troubleshooting)
 - [Production Considerations](#production-considerations)
 
+## 🔐 Authentication-First Deployment
+
+**⚡ TL;DR - Secure Deployment in 4 Commands:**
+```bash
+make dev-setup      # Setup environment with authentication
+make dev-start      # Deploy with auth enabled
+make auth-setup     # Create admin user
+make auth-demo      # Test authentication
+```
+
 ## 🚀 Quick Start
 
-### Option 1: Docker Compose (Recommended for Development)
+### Option 1: Secure Docker Compose Deployment (Recommended)
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/vllm-local-swarm.git
+git clone https://github.com/tbowman01/vllm-local-swarm.git
 cd vllm-local-swarm
 
-# Start with basic services
-make compose-up
+# Complete authenticated deployment
+make dev-setup && make dev-start && make auth-setup
 
-# Or start with additional services
-make compose-up PROFILES=proxy,webui
+# Verify deployment
+make health-check && make auth-health
 ```
 
 ### Option 2: Kubernetes (Recommended for Production)

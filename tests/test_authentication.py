@@ -6,7 +6,7 @@ Test suite for Authentication Service
 import pytest
 import asyncio
 import httpx
-import jwt
+from jose import jwt
 from datetime import datetime, timedelta
 import json
 import os

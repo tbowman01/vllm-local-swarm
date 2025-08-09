@@ -19,7 +19,7 @@ from fastapi import FastAPI, HTTPException, Depends, Header, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, EmailStr, Field
 import uvicorn
-import jwt
+from jose import jwt
 from passlib.context import CryptContext
 import redis.asyncio as redis
 from sqlalchemy import create_engine, Column, String, DateTime, Boolean, Text

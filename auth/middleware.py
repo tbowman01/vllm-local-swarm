@@ -13,7 +13,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 import httpx
-import jwt
+from jose import jwt
 
 logger = logging.getLogger(__name__)
 
