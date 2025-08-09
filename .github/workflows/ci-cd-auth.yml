@@ -228,11 +228,13 @@ jobs:
     - name: Publish test results
       uses: dorny/test-reporter@v1
       if: always() && hashFiles('auth-test-results.xml') != ''
+      continue-on-error: true  # Don't fail the job if GitHub API has issues
       with:
         name: Authentication Tests
         path: auth-test-results.xml
         reporter: java-junit
         fail-on-empty: false
+        fail-on-error: false
 
   # ============================================================================
   # DOCKER BUILD & PUSH
