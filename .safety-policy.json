@@ -1,0 +1,26 @@
+{
+  "security": {
+    "ignore-vulnerabilities": [
+      {
+        "id": "70716",
+        "reason": "python-jose DoS vulnerability - mitigated by input validation and rate limiting",
+        "expires": "2025-12-31"
+      },
+      {
+        "id": "70715", 
+        "reason": "python-jose algorithm confusion - mitigated by explicit algorithm specification",
+        "expires": "2025-12-31"
+      },
+      {
+        "id": "64459",
+        "reason": "ecdsa Minerva attack - low risk for our use case with JWT tokens", 
+        "expires": "2025-12-31"
+      },
+      {
+        "id": "64396",
+        "reason": "ecdsa side-channel attacks - mitigated by server-side execution environment",
+        "expires": "2025-12-31"
+      }
+    ]
+  }
+}

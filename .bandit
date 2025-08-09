@@ -1,0 +1,18 @@
+[bandit]
+# Bandit configuration for secure CI/CD
+exclude_dirs = [".git", ".mypy_cache", "__pycache__", "tests"]
+tests = []
+skips = []
+
+# Allow binding to all interfaces in containerized services 
+[bandit.assert_used]
+# We use asserts in tests only
+skips = ["B101"]
+
+[bandit.hardcoded_bind_all_interfaces] 
+# Allow 0.0.0.0 binding for containerized services
+skips = ["B104"]
+
+[bandit.hardcoded_password_string]
+# Allow "bearer" token type string
+skips = ["B105"]
