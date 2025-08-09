@@ -324,28 +324,23 @@ jobs:
     - name: Install dependencies
       run: |
         pip install -r auth/requirements.txt
-        pip install pytest httpx docker-compose
+        pip install pytest httpx redis psycopg2-binary
 
     - name: Start services with docker-compose
       run: |
-        cp .env.example .env
-        echo "JWT_SECRET_KEY=$(openssl rand -base64 32)" >> .env
-        echo "DATABASE_URL=postgresql://vllm_user:vllm_password@localhost:5432/vllm_auth" >> .env
-        echo "REDIS_URL=redis://localhost:6379" >> .env
-        
         # Start core services for testing
         docker-compose up -d redis langfuse-db
-        sleep 10
+        sleep 15
 
     - name: Run integration tests
       run: |
         python -c "
-        import time, requests, sys
+        import time, sys
         
-        # Test service health endpoints
+        # Test service health endpoints - using actual docker-compose service configs
         services = [
             ('Redis', 'redis://localhost:6379'),
-            ('PostgreSQL', 'postgresql://vllm_user:vllm_password@localhost:5432/vllm_auth')
+            ('PostgreSQL (Langfuse)', 'postgresql://langfuse:langfuse123@localhost:5432/langfuse')
         ]
         
         print('🔍 Testing service connectivity...')
@@ -363,6 +358,20 @@ jobs:
                     print(f'✅ {name}: Connected')
             except Exception as e:
                 print(f'❌ {name}: Failed - {e}')
+                print(f'   URL attempted: {url}')
+                # Show docker logs for debugging
+                import subprocess
+                try:
+                    if 'redis' in name.lower():
+                        result = subprocess.run(['docker', 'logs', 'vllm-redis'], 
+                                              capture_output=True, text=True, timeout=5)
+                        print(f'   Redis logs: {result.stdout[-200:]}')
+                    elif 'postgresql' in name.lower():
+                        result = subprocess.run(['docker', 'logs', 'vllm-langfuse-db'], 
+                                              capture_output=True, text=True, timeout=5)
+                        print(f'   PostgreSQL logs: {result.stdout[-200:]}')
+                except:
+                    pass
                 sys.exit(1)
         
         print('🎉 Integration tests passed!')
