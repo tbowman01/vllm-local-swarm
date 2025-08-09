@@ -1,0 +1,141 @@
+version: '3.8'
+
+services:
+  # Authentication Service
+  auth-service:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.auth
+    container_name: vllm-auth-service
+    ports:
+      - "8005:8005"
+    environment:
+      AUTH_PORT: 8005
+      DATABASE_URL: postgresql+asyncpg://langfuse:${LANGFUSE_DB_PASSWORD:-langfuse123}@langfuse-db:5432/auth
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-secret-jwt-key-change-this-in-production}
+      JWT_ALGORITHM: HS256
+      JWT_EXPIRATION_HOURS: ${JWT_EXPIRATION_HOURS:-24}
+      REFRESH_TOKEN_EXPIRATION_DAYS: ${REFRESH_TOKEN_EXPIRATION_DAYS:-30}
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - vllm-network
+    restart: unless-stopped
+
+  # Orchestrator with Authentication
+  orchestrator-auth:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.orchestrator
+    container_name: vllm-orchestrator-auth
+    ports:
+      - "8006:8004"
+    volumes:
+      - ./docker/scripts/orchestrator_server_auth.py:/app/docker/scripts/orchestrator_server.py
+      - ./auth:/app/auth
+      - ./src:/app/src
+      - ./coordination:/app/coordination
+      - ./memory:/app/memory
+    environment:
+      ORCHESTRATOR_PORT: 8004
+      MODEL_SERVICE_URL: http://vllm-phi:8000
+      MEMORY_API_URL: http://memory-api:8003
+      REDIS_URL: redis://redis:6379
+      AUTH_SERVICE_URL: http://auth-service:8005
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-secret-jwt-key-change-this-in-production}
+      PYTHONPATH: /app:/app/auth
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      memory-api:
+        condition: service_healthy
+    command: python /app/docker/scripts/orchestrator_server.py
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - vllm-network
+    restart: unless-stopped
+
+  # Memory API with Authentication (optional)
+  memory-api-auth:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.memory-api
+    container_name: vllm-memory-api-auth
+    ports:
+      - "8007:8003"
+    volumes:
+      - ./memory:/app/memory
+      - ./auth:/app/auth
+    environment:
+      API_PORT: 8003
+      REDIS_URL: redis://redis:6379
+      QDRANT_URL: http://qdrant:6333
+      AUTH_SERVICE_URL: http://auth-service:8005
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-secret-jwt-key-change-this-in-production}
+      REQUIRE_AUTH: ${MEMORY_REQUIRE_AUTH:-false}
+      PYTHONPATH: /app:/app/auth
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - vllm-network
+    restart: unless-stopped
+    profiles:
+      - auth-full  # Only start with --profile auth-full
+
+  # Nginx Reverse Proxy with Authentication Headers
+  nginx-auth:
+    image: nginx:alpine
+    container_name: vllm-nginx-auth
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx-auth.conf:/etc/nginx/nginx.conf
+      - ./nginx/ssl:/etc/nginx/ssl
+    depends_on:
+      - auth-service
+      - orchestrator-auth
+    networks:
+      - vllm-network
+    restart: unless-stopped
+    profiles:
+      - auth-proxy  # Only start with --profile auth-proxy
+
+# Use existing networks and volumes from main docker-compose.yml
+networks:
+  vllm-network:
+    external: true
+
+volumes:
+  redis_data:
+    external: true
+  langfuse_db_data:
+    external: true
+  qdrant_data:
+    external: true

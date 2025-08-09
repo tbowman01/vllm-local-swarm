@@ -1,0 +1,35 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    build-essential \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy authentication requirements
+COPY auth/requirements.txt /app/auth/requirements.txt
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r /app/auth/requirements.txt
+
+# Copy authentication code
+COPY auth/ /app/auth/
+
+# Create non-root user
+RUN useradd -m -u 1000 authuser && chown -R authuser:authuser /app
+
+USER authuser
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV AUTH_PORT=8005
+
+# Expose port
+EXPOSE 8005
+
+# Run the authentication service
+CMD ["python", "/app/auth/auth_service.py"]
