@@ -1,17 +1,17 @@
-# Authentication service dependencies
-fastapi>=0.100.0
-uvicorn>=0.20.0
-pydantic>=2.0.0
-python-jose[cryptography]>=3.3.0
-passlib[bcrypt]>=1.7.4
-python-multipart>=0.0.5
-redis>=4.0.0
-sqlalchemy>=2.0.0
-asyncpg>=0.27.0
-psycopg2-binary>=2.9.0
-httpx>=0.24.0
-email-validator>=2.0.0
+# Authentication service dependencies (n, n-1, n-2 versions only)
+fastapi>=0.114.0,<0.118.0  # Current: 0.115.x (n, n-1, n-2: 0.115, 0.114, 0.113)
+uvicorn>=0.32.0,<0.36.0    # Current: 0.34.x (n, n-1, n-2: 0.34, 0.33, 0.32)
+pydantic>=2.9.0,<2.13.0    # Current: 2.11.x (n, n-1, n-2: 2.11, 2.10, 2.9)
+python-jose[cryptography]>=3.3.0,<3.6.0  # Stable at 3.3.x
+passlib[bcrypt]>=1.7.4,<1.9.0  # Stable at 1.7.x
+python-multipart>=0.0.17,<0.1.0  # Current: 0.0.20 (recent versions only)
+redis>=5.2.0,<6.1.0        # Current: 5.2.x (n, n-1, n-2: 5.2, 5.1, 5.0)  
+sqlalchemy>=2.0.35,<2.1.0  # Current: 2.0.x LTS (n, n-1, n-2: 2.0.36+)
+asyncpg>=0.30.0,<0.32.0    # Current: 0.30.x (n, n-1, n-2: 0.30, 0.29, 0.28)
+psycopg2-binary>=2.9.10,<2.10.0  # Current: 2.9.10 (stable)
+httpx>=0.28.0,<0.30.0      # Current: 0.28.x (n, n-1, n-2: 0.28, 0.27, 0.26)
+email-validator>=2.2.0,<2.4.0  # Current: 2.2.x (n, n-1, n-2: 2.2, 2.1, 2.0)
 
-# Security updates for CI/CD compliance
-PyJWT>=2.8.0
-cryptography>=41.0.0
+# Security updates for CI/CD compliance (current versions only)
+PyJWT>=2.10.0,<2.12.0     # Current: 2.10.x (n, n-1, n-2: 2.10, 2.9, 2.8)
+cryptography>=45.0.0,<47.0.0  # Current: 45.x (n, n-1, n-2: 45, 44, 43)

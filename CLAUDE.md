@@ -1134,6 +1134,7 @@ london_tdd_pipeline:
 8. **COMPLIANCE IS ASSUMED** - GDPR, SOC2, HIPAA compliance built-in
 9. **INCIDENT RESPONSE IS PREPARED** - Security incidents handled immediately
 10. **CONTINUOUS IMPROVEMENT** - Security posture improves with every commit
+11. **DEPENDENCY SECURITY** - Only use current package versions (n, n-1, n-2) to minimize vulnerabilities
 
 ### 🏗️ Architectural Principles
 
@@ -1147,6 +1148,57 @@ london_tdd_pipeline:
 - **Threat Modeling**: Regular threat assessment and mitigation
 - **Penetration Testing**: Regular security testing and vulnerability assessment
 - **Security Training**: Continuous security education for all team members
+
+### 📦 Dependency Security Management
+
+**MANDATORY**: All dependencies must follow the n, n-1, n-2 version policy to minimize security vulnerabilities.
+
+```python
+# EXAMPLE: FastAPI dependency management
+# Current version: 0.115.x
+# Allowed versions: 0.115 (n), 0.114 (n-1), 0.113 (n-2)
+fastapi>=0.114.0,<0.118.0  # Secure version range
+
+# PROHIBITED: Old versions with known vulnerabilities
+fastapi>=0.100.0  # ❌ Too broad, includes vulnerable versions
+fastapi==0.110.0  # ❌ Too old, potentially vulnerable
+```
+
+#### 🔒 Dependency Update Protocol
+
+1. **Weekly Security Scans**: Automated vulnerability checking
+2. **Monthly Version Updates**: Review and update to latest n, n-1, n-2
+3. **Emergency Patches**: Immediate updates for critical vulnerabilities
+4. **Testing Required**: Full test suite must pass before updating
+5. **Documentation**: All version changes must be documented
+
+```yaml
+# .github/dependabot.yml - Automated dependency management
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/auth"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    target-branch: "develop"
+    reviewers:
+      - "security-team"
+    commit-message:
+      prefix: "🔒 security"
+      prefix-development: "🔒 deps"
+```
+
+#### 📊 Current Dependency Matrix
+
+| Package | Current | n | n-1 | n-2 | Security Status |
+|---------|---------|---|-----|-----|-----------------|
+| FastAPI | 0.115.x | ✅ | ✅ | ✅ | Secure |
+| uvicorn | 0.34.x | ✅ | ✅ | ✅ | Secure |
+| pydantic | 2.11.x | ✅ | ✅ | ✅ | Secure |
+| SQLAlchemy | 2.0.x | ✅ | ✅ | ✅ | LTS |
+| cryptography | 45.x | ✅ | ✅ | ✅ | Critical |
+| PyJWT | 2.10.x | ✅ | ✅ | ✅ | Critical |
 
 ### 🚨 Emergency Response Protocols
 
