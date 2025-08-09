@@ -288,15 +288,17 @@ jobs:
         cache-to: type=gha,mode=max
         platforms: linux/amd64  # Single platform for speed
 
-    - name: Generate SBOM
+    - name: Generate SBOM from source
+      if: always()  # Generate SBOM from source files instead of pushed image
       uses: anchore/sbom-action@v0
       with:
-        image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.service }}:${{ github.sha }}
+        path: ./  # Scan source code instead of container image
         format: spdx-json
         output-file: sbom-${{ matrix.service }}.spdx.json
 
     - name: Upload SBOM
       uses: actions/upload-artifact@v4
+      if: always()
       with:
         name: sbom-${{ matrix.service }}
         path: sbom-${{ matrix.service }}.spdx.json
