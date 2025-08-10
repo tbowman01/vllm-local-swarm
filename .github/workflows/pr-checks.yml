@@ -122,9 +122,10 @@ jobs:
         echo "DATABASE_URL=postgresql://test_user:test_password@localhost:5432/vllm_auth_test" >> .env
         echo "REDIS_URL=redis://localhost:6379" >> .env
 
-    - name: Run authentication tests
+    - name: Run authentication component tests
       run: |
-        python -m pytest tests/test_authentication.py -v \
+        # Run comprehensive component tests that don't require running services
+        python -m pytest tests/ci/test_auth_components.py -v \
           --cov=auth --cov-report=term-missing \
           --junit-xml=test-results.xml \
           -p no:langsmith
