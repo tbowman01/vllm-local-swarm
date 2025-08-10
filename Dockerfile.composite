@@ -60,7 +60,7 @@ ORCH_PID=$!
 
 # Start memory API
 echo "💾 Starting Memory API..."
-python /app/memory/api/memory_api.py &
+python /app/docker/scripts/memory_api_server.py &
 MEMORY_PID=$!
 
 # Function to cleanup processes
