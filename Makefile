@@ -436,4 +436,3 @@ performance-test: ## Run performance tests
 		echo "Test $$i: $$(curl -w '%{time_total}s' -s -o /dev/null http://localhost:8005/health 2>/dev/null || echo 'failed')"; \
 	done
 	@echo "✅ Performance test completed"
-EOF < /dev/null
