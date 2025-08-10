@@ -40,13 +40,28 @@ jobs:
       run: |
         echo "🔍 Validating GitHub Actions secrets..."
         
+        # Check if this is a PR or main branch deployment
+        if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+          echo "🔧 PR detected - checking secrets availability for development"
+          FAIL_ON_MISSING=false
+        elif [[ "$GITHUB_REF" == "refs/heads/main" ]]; then
+          echo "🚀 Main branch deployment - strict secret validation required"
+          FAIL_ON_MISSING=true
+        else
+          echo "🔧 Development branch - checking secrets availability"
+          FAIL_ON_MISSING=false
+        fi
+        
+        # Track validation results
+        MISSING_SECRETS=0
+        
         # Check JWT_SECRET_KEY
         if [ -z "$JWT_SECRET_KEY" ]; then
           echo "❌ JWT_SECRET_KEY is not configured"
-          exit 1
+          MISSING_SECRETS=$((MISSING_SECRETS + 1))
         elif [ ${#JWT_SECRET_KEY} -lt 32 ]; then
           echo "❌ JWT_SECRET_KEY is too short (minimum 32 characters required)"
-          exit 1
+          MISSING_SECRETS=$((MISSING_SECRETS + 1))
         else
           echo "✅ JWT_SECRET_KEY configured (${#JWT_SECRET_KEY} characters)"
         fi
@@ -54,10 +69,10 @@ jobs:
         # Check LANGFUSE_DB_PASSWORD
         if [ -z "$LANGFUSE_DB_PASSWORD" ]; then
           echo "❌ LANGFUSE_DB_PASSWORD is not configured"
-          exit 1
+          MISSING_SECRETS=$((MISSING_SECRETS + 1))
         elif [ ${#LANGFUSE_DB_PASSWORD} -lt 12 ]; then
           echo "❌ LANGFUSE_DB_PASSWORD is too short (minimum 12 characters recommended)"
-          exit 1
+          MISSING_SECRETS=$((MISSING_SECRETS + 1))
         else
           echo "✅ LANGFUSE_DB_PASSWORD configured (${#LANGFUSE_DB_PASSWORD} characters)"
         fi
@@ -65,15 +80,32 @@ jobs:
         # Check LANGFUSE_SECRET
         if [ -z "$LANGFUSE_SECRET" ]; then
           echo "❌ LANGFUSE_SECRET is not configured"
-          exit 1
+          MISSING_SECRETS=$((MISSING_SECRETS + 1))
         elif [ ${#LANGFUSE_SECRET} -lt 16 ]; then
           echo "❌ LANGFUSE_SECRET is too short (minimum 16 characters recommended)"
-          exit 1
+          MISSING_SECRETS=$((MISSING_SECRETS + 1))
         else
           echo "✅ LANGFUSE_SECRET configured (${#LANGFUSE_SECRET} characters)"
         fi
         
-        echo "🎉 All required secrets validated successfully!"
+        # Final validation
+        if [ $MISSING_SECRETS -gt 0 ]; then
+          if [ "$FAIL_ON_MISSING" = true ]; then
+            echo ""
+            echo "🚨 DEPLOYMENT BLOCKED: $MISSING_SECRETS secret(s) missing or invalid"
+            echo "📖 See docs/GITHUB_ACTIONS_SECRETS.md for setup instructions"
+            echo "🔧 Run scripts/generate-secrets.sh to generate secure values"
+            exit 1
+          else
+            echo ""
+            echo "⚠️ WARNING: $MISSING_SECRETS secret(s) missing or invalid"
+            echo "📖 For production deployment, configure secrets per docs/GITHUB_ACTIONS_SECRETS.md"
+            echo "🔧 Use scripts/generate-secrets.sh to generate secure values"
+            echo "✅ Continuing with development/PR workflow"
+          fi
+        else
+          echo "🎉 All required secrets validated successfully!"
+        fi
       env:
         JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
         LANGFUSE_DB_PASSWORD: ${{ secrets.LANGFUSE_DB_PASSWORD }}
@@ -195,11 +227,23 @@ jobs:
     - name: Set up test environment
       run: |
         cp .env.example .env || true
-        echo "JWT_SECRET_KEY=$JWT_SECRET_KEY" >> .env
+        
+        # Use secrets if available, otherwise fallback to test values
+        JWT_SECRET=${JWT_SECRET_KEY:-"test-jwt-secret-key-for-ci-cd-pipeline-32chars"}
+        DB_PASSWORD=${LANGFUSE_DB_PASSWORD:-"test-db-password-for-ci"}
+        LANGFUSE_SECRET_VAL=${LANGFUSE_SECRET:-"test-langfuse-secret"}
+        
+        echo "JWT_SECRET_KEY=$JWT_SECRET" >> .env
         echo "DATABASE_URL=postgresql://test_user:test_password@localhost:5432/vllm_auth_test" >> .env
         echo "REDIS_URL=redis://localhost:6379" >> .env
-        echo "LANGFUSE_DB_PASSWORD=$LANGFUSE_DB_PASSWORD" >> .env
-        echo "LANGFUSE_SECRET=$LANGFUSE_SECRET" >> .env
+        echo "LANGFUSE_DB_PASSWORD=$DB_PASSWORD" >> .env
+        echo "LANGFUSE_SECRET=$LANGFUSE_SECRET_VAL" >> .env
+        
+        # Log configuration (without exposing secrets)
+        echo "✅ Environment configured for testing"
+        echo "JWT_SECRET_KEY length: ${#JWT_SECRET}"
+        echo "Database password configured: $([ -n "$DB_PASSWORD" ] && echo "Yes" || echo "No")"
+        echo "Langfuse secret configured: $([ -n "$LANGFUSE_SECRET_VAL" ] && echo "Yes" || echo "No")"
       env:
         JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
         LANGFUSE_DB_PASSWORD: ${{ secrets.LANGFUSE_DB_PASSWORD }}
