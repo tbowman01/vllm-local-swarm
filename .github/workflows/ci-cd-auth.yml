@@ -29,11 +29,95 @@ env:
 
 jobs:
   # ============================================================================
+  # SECRETS VALIDATION
+  # ============================================================================
+  validate-secrets:
+    name: 🔐 Validate Secrets
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Validate required secrets
+      run: |
+        echo "🔍 Validating GitHub Actions secrets..."
+        
+        # Check if this is a PR or main branch deployment
+        if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+          echo "🔧 PR detected - checking secrets availability for development"
+          FAIL_ON_MISSING=false
+        elif [[ "$GITHUB_REF" == "refs/heads/main" ]]; then
+          echo "🚀 Main branch deployment - strict secret validation required"
+          FAIL_ON_MISSING=true
+        else
+          echo "🔧 Development branch - checking secrets availability"
+          FAIL_ON_MISSING=false
+        fi
+        
+        # Track validation results
+        MISSING_SECRETS=0
+        
+        # Check JWT_SECRET_KEY
+        if [ -z "$JWT_SECRET_KEY" ]; then
+          echo "❌ JWT_SECRET_KEY is not configured"
+          MISSING_SECRETS=$((MISSING_SECRETS + 1))
+        elif [ ${#JWT_SECRET_KEY} -lt 32 ]; then
+          echo "❌ JWT_SECRET_KEY is too short (minimum 32 characters required)"
+          MISSING_SECRETS=$((MISSING_SECRETS + 1))
+        else
+          echo "✅ JWT_SECRET_KEY configured (${#JWT_SECRET_KEY} characters)"
+        fi
+        
+        # Check LANGFUSE_DB_PASSWORD
+        if [ -z "$LANGFUSE_DB_PASSWORD" ]; then
+          echo "❌ LANGFUSE_DB_PASSWORD is not configured"
+          MISSING_SECRETS=$((MISSING_SECRETS + 1))
+        elif [ ${#LANGFUSE_DB_PASSWORD} -lt 12 ]; then
+          echo "❌ LANGFUSE_DB_PASSWORD is too short (minimum 12 characters recommended)"
+          MISSING_SECRETS=$((MISSING_SECRETS + 1))
+        else
+          echo "✅ LANGFUSE_DB_PASSWORD configured (${#LANGFUSE_DB_PASSWORD} characters)"
+        fi
+        
+        # Check LANGFUSE_SECRET
+        if [ -z "$LANGFUSE_SECRET" ]; then
+          echo "❌ LANGFUSE_SECRET is not configured"
+          MISSING_SECRETS=$((MISSING_SECRETS + 1))
+        elif [ ${#LANGFUSE_SECRET} -lt 16 ]; then
+          echo "❌ LANGFUSE_SECRET is too short (minimum 16 characters recommended)"
+          MISSING_SECRETS=$((MISSING_SECRETS + 1))
+        else
+          echo "✅ LANGFUSE_SECRET configured (${#LANGFUSE_SECRET} characters)"
+        fi
+        
+        # Final validation
+        if [ $MISSING_SECRETS -gt 0 ]; then
+          if [ "$FAIL_ON_MISSING" = true ]; then
+            echo ""
+            echo "🚨 DEPLOYMENT BLOCKED: $MISSING_SECRETS secret(s) missing or invalid"
+            echo "📖 See docs/GITHUB_ACTIONS_SECRETS.md for setup instructions"
+            echo "🔧 Run scripts/generate-secrets.sh to generate secure values"
+            exit 1
+          else
+            echo ""
+            echo "⚠️ WARNING: $MISSING_SECRETS secret(s) missing or invalid"
+            echo "📖 For production deployment, configure secrets per docs/GITHUB_ACTIONS_SECRETS.md"
+            echo "🔧 Use scripts/generate-secrets.sh to generate secure values"
+            echo "✅ Continuing with development/PR workflow"
+          fi
+        else
+          echo "🎉 All required secrets validated successfully!"
+        fi
+      env:
+        JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
+        LANGFUSE_DB_PASSWORD: ${{ secrets.LANGFUSE_DB_PASSWORD }}
+        LANGFUSE_SECRET: ${{ secrets.LANGFUSE_SECRET }}
+
+  # ============================================================================
   # SECURITY & CODE QUALITY
   # ============================================================================
   security-scan:
     name: 🛡️ Security Scanning
     runs-on: ubuntu-latest
+    needs: [validate-secrets]
     permissions:
       contents: read
       security-events: write
@@ -98,6 +182,7 @@ jobs:
   auth-tests:
     name: 🔐 Authentication Tests
     runs-on: ubuntu-latest
+    needs: [validate-secrets]
     
     services:
       redis:
@@ -142,63 +227,31 @@ jobs:
     - name: Set up test environment
       run: |
         cp .env.example .env || true
-        echo "JWT_SECRET_KEY=test-secret-key-for-ci-cd-pipeline" >> .env
+        
+        # Use secrets if available, otherwise fallback to test values
+        JWT_SECRET=${JWT_SECRET_KEY:-"test-jwt-secret-key-for-ci-cd-pipeline-32chars"}
+        DB_PASSWORD=${LANGFUSE_DB_PASSWORD:-"test-db-password-for-ci"}
+        LANGFUSE_SECRET_VAL=${LANGFUSE_SECRET:-"test-langfuse-secret"}
+        
+        echo "JWT_SECRET_KEY=$JWT_SECRET" >> .env
         echo "DATABASE_URL=postgresql://test_user:test_password@localhost:5432/vllm_auth_test" >> .env
         echo "REDIS_URL=redis://localhost:6379" >> .env
+        echo "LANGFUSE_DB_PASSWORD=$DB_PASSWORD" >> .env
+        echo "LANGFUSE_SECRET=$LANGFUSE_SECRET_VAL" >> .env
+        
+        # Log configuration (without exposing secrets)
+        echo "✅ Environment configured for testing"
+        echo "JWT_SECRET_KEY length: ${#JWT_SECRET}"
+        echo "Database password configured: $([ -n "$DB_PASSWORD" ] && echo "Yes" || echo "No")"
+        echo "Langfuse secret configured: $([ -n "$LANGFUSE_SECRET_VAL" ] && echo "Yes" || echo "No")"
+      env:
+        JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
+        LANGFUSE_DB_PASSWORD: ${{ secrets.LANGFUSE_DB_PASSWORD }}
+        LANGFUSE_SECRET: ${{ secrets.LANGFUSE_SECRET }}
 
     - name: Run authentication unit tests
       run: |
-        # Create and run minimal unit tests for CI
-        mkdir -p tests/ci
-        cat > tests/ci/test_auth_components.py << 'EOF'
-        import pytest
-        import sys
-        import os
-        sys.path.insert(0, os.path.abspath('.'))
-
-        from auth.auth_service import create_access_token, verify_password, get_password_hash
-        from auth.middleware import AuthConfig
-
-        def test_authentication_imports():
-            """Test that all authentication components can be imported."""
-            assert create_access_token is not None
-            assert verify_password is not None
-            assert get_password_hash is not None
-            assert AuthConfig is not None
-
-        def test_jwt_token_creation():
-            """Test JWT token creation functionality."""
-            token = create_access_token({'user_id': 'test_user', 'username': 'test'})
-            assert token is not None
-            assert isinstance(token, str)
-            assert len(token) > 50  # JWT tokens are typically longer
-
-        def test_password_hashing():
-            """Test password hashing and verification."""
-            password = "TestPassword123!"
-            hashed = get_password_hash(password)
-            assert hashed is not None
-            assert hashed != password  # Should be hashed
-            assert verify_password(password, hashed) is True
-            assert verify_password("WrongPassword", hashed) is False
-
-        def test_auth_config_creation():
-            """Test authentication configuration creation."""
-            config = AuthConfig(
-                auth_service_url="http://localhost:8005",
-                jwt_secret_key="test-secret-key",
-                required_permissions=["test.read"]
-            )
-            assert config is not None
-            assert config.auth_service_url == "http://localhost:8005"
-            assert config.jwt_secret_key == "test-secret-key"
-            assert "test.read" in config.required_permissions
-
-        if __name__ == "__main__":
-            pytest.main([__file__, "-v"])
-        EOF
-
-        # Run the tests with pytest
+        # Run only the component tests we created for CI (not integration tests)
         python -m pytest tests/ci/test_auth_components.py -v \
           --junit-xml=auth-test-results.xml \
           --cov=auth --cov-report=xml --cov-report=html \

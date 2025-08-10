@@ -24,6 +24,14 @@ sys.path.insert(0, '/app')
 from memory.core import MemoryManager, MemoryConfig
 from memory.tools import MemoryTool, CoordinationTool, AnalyticsTool
 
+# Authentication imports (conditional for backward compatibility)
+try:
+    from auth.middleware import AuthenticationMiddleware, AuthConfig, require_auth, get_current_user
+    AUTH_AVAILABLE = True
+except ImportError:
+    AUTH_AVAILABLE = False
+    logging.warning("Authentication module not available - running without authentication")
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -87,6 +95,23 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add authentication middleware (if available)
+if AUTH_AVAILABLE:
+    auth_service_url = os.getenv("AUTH_SERVICE_URL", "http://auth-service:8005")
+    jwt_secret_key = os.getenv("JWT_SECRET_KEY")
+    
+    if jwt_secret_key:
+        auth_config = AuthConfig(
+            auth_service_url=auth_service_url,
+            jwt_secret_key=jwt_secret_key,
+            required_permissions=["memory.read", "memory.write"],
+            allow_anonymous=False
+        )
+        app.add_middleware(AuthenticationMiddleware, config=auth_config)
+        logger.info("Authentication middleware enabled for Memory API")
+    else:
+        logger.warning("JWT_SECRET_KEY not configured - running without authentication")
 
 
 @app.get("/health")
