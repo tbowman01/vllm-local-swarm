@@ -20,7 +20,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import Boolean, Column, DateTime, String, Text
+from sqlalchemy import Boolean, Column, DateTime, String, Text, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.ext.declarative import declarative_base
 
@@ -226,7 +226,7 @@ async def verify_api_key(api_key: str = Header(alias="X-API-Key")) -> dict:
         key_hash = hashlib.sha256(api_key.encode()).hexdigest()
 
         result = await db.execute(
-            "SELECT * FROM api_keys WHERE key = :key AND is_active = true",
+            text("SELECT * FROM api_keys WHERE key = :key AND is_active = true"),
             {"key": key_hash},
         )
         api_key_record = result.first()
@@ -244,7 +244,7 @@ async def verify_api_key(api_key: str = Header(alias="X-API-Key")) -> dict:
 
         # Update last used timestamp
         await db.execute(
-            "UPDATE api_keys SET last_used = :now WHERE id = :id",
+            text("UPDATE api_keys SET last_used = :now WHERE id = :id"),
             {"now": datetime.utcnow(), "id": api_key_record.id},
         )
         await db.commit()
@@ -297,7 +297,7 @@ async def startup_event():
 
         # Create default admin user if not exists
         async with AsyncSessionLocal() as db:
-            result = await db.execute("SELECT * FROM users WHERE username = 'admin'")
+            result = await db.execute(text("SELECT * FROM users WHERE username = 'admin'"))
             if not result.first():
                 admin_user = User(
                     username="admin",
@@ -341,7 +341,7 @@ async def register(request: UserRegisterRequest, db: AsyncSession = Depends(get_
     """Register a new user"""
     # Check if username or email already exists
     result = await db.execute(
-        "SELECT * FROM users WHERE username = :username OR email = :email",
+        text("SELECT * FROM users WHERE username = :username OR email = :email"),
         {"username": request.username, "email": request.email},
     )
     if result.first():
@@ -383,7 +383,7 @@ async def login(request: UserLoginRequest, db: AsyncSession = Depends(get_db)):
     """Login and receive JWT tokens"""
     # Find user
     result = await db.execute(
-        "SELECT * FROM users WHERE username = :username", {"username": request.username}
+        text("SELECT * FROM users WHERE username = :username"), {"username": request.username}
     )
     user = result.first()
 
@@ -400,7 +400,7 @@ async def login(request: UserLoginRequest, db: AsyncSession = Depends(get_db)):
 
     # Update last login
     await db.execute(
-        "UPDATE users SET last_login = :now WHERE id = :id",
+        text("UPDATE users SET last_login = :now WHERE id = :id"),
         {"now": datetime.utcnow(), "id": user.id},
     )
     await db.commit()
@@ -472,7 +472,7 @@ async def refresh_token(refresh_token: str, db: AsyncSession = Depends(get_db)):
 
         # Get user
         result = await db.execute(
-            "SELECT * FROM users WHERE id = :id AND is_active = true", {"id": user_id}
+            text("SELECT * FROM users WHERE id = :id AND is_active = true"), {"id": user_id}
         )
         user = result.first()
 
@@ -521,7 +521,7 @@ async def get_current_user(
     """Get current user information"""
     user_id = token_data.get("sub")
 
-    result = await db.execute("SELECT * FROM users WHERE id = :id", {"id": user_id})
+    result = await db.execute(text("SELECT * FROM users WHERE id = :id"), {"id": user_id})
     user = result.first()
 
     if not user:
@@ -551,7 +551,7 @@ async def change_password(
     """Change user password"""
     user_id = token_data.get("sub")
 
-    result = await db.execute("SELECT * FROM users WHERE id = :id", {"id": user_id})
+    result = await db.execute(text("SELECT * FROM users WHERE id = :id"), {"id": user_id})
     user = result.first()
 
     if not user:
@@ -568,7 +568,7 @@ async def change_password(
     # Update password
     new_hash = get_password_hash(request.new_password)
     await db.execute(
-        "UPDATE users SET password_hash = :hash, updated_at = :now WHERE id = :id",
+        text("UPDATE users SET password_hash = :hash, updated_at = :now WHERE id = :id"),
         {"hash": new_hash, "now": datetime.utcnow(), "id": user_id},
     )
     await db.commit()
@@ -626,7 +626,7 @@ async def list_api_keys(
     user_id = token_data.get("sub")
 
     result = await db.execute(
-        "SELECT * FROM api_keys WHERE user_id = :user_id AND is_active = true",
+        text("SELECT * FROM api_keys WHERE user_id = :user_id AND is_active = true"),
         {"user_id": user_id},
     )
     keys = result.fetchall()
@@ -656,7 +656,7 @@ async def revoke_api_key(
     user_id = token_data.get("sub")
 
     result = await db.execute(
-        "UPDATE api_keys SET is_active = false WHERE id = :id AND user_id = :user_id",
+        text("UPDATE api_keys SET is_active = false WHERE id = :id AND user_id = :user_id"),
         {"id": key_id, "user_id": user_id},
     )
 
