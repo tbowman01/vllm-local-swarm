@@ -29,10 +29,41 @@ logger = logging.getLogger(__name__)
 
 # Configuration
 API_PORT = int(os.getenv("API_PORT", "8003"))
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379")  # Use container hostname
 
-# Initialize global memory manager
-memory_manager = MemoryManager()
+# Initialize global memory manager with minimal config
+try:
+    from core.config import MemoryConfig, RedisConfig, QdrantConfig, LangfuseConfig, ClickHouseConfig, EmbeddingConfig
+    
+    # Set environment variables for container networking
+    import os
+    os.environ.setdefault("REDIS_HOST", "redis")
+    os.environ.setdefault("QDRANT_HOST", "qdrant") 
+    
+    # Create minimal configs
+    redis_config = RedisConfig.from_env()
+    qdrant_config = QdrantConfig.from_env() 
+    langfuse_config = LangfuseConfig.from_env()
+    clickhouse_config = ClickHouseConfig.from_env()
+    embedding_config = EmbeddingConfig.from_env()
+    
+    # Create memory config with defaults that work in container
+    memory_config = MemoryConfig(
+        redis=redis_config,
+        qdrant=qdrant_config,
+        langfuse=langfuse_config,
+        clickhouse=clickhouse_config,
+        embedding=embedding_config,
+        semantic_memory_enabled=False,  # Disabled for now
+        observability_enabled=False     # Disabled for now
+    )
+    
+    memory_manager = MemoryManager(memory_config)
+    
+except ImportError as e:
+    logger.warning(f"Could not import all config classes: {e}")
+    # Fallback to minimal memory manager without full config
+    memory_manager = MemoryManager(None)
 
 # FastAPI app
 app = FastAPI(title="Memory API Service", version="1.0.0")

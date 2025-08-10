@@ -1,0 +1,277 @@
+name: ⚡ Performance Issue
+description: Report performance problems or optimization opportunities
+title: "⚡ [PERFORMANCE]: "
+labels: ["performance", "optimization"]
+assignees:
+  - tbowman01
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## ⚡ Performance Issue
+        
+        Help us optimize vLLM Local Swarm by reporting performance issues and bottlenecks.
+
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      description: Please confirm you have completed the following
+      options:
+        - label: I have profiled the performance issue with metrics
+          required: true
+        - label: I have tested on appropriate hardware (GPU for AI workloads)
+          required: true
+        - label: I have verified this isn't a configuration issue
+          required: true
+
+  - type: dropdown
+    id: performance_category
+    attributes:
+      label: Performance Category
+      description: What type of performance issue?
+      options:
+        - CPU Usage/Processing Speed
+        - Memory Usage/Memory Leaks
+        - GPU Utilization/VRAM
+        - Network I/O/API Response Times
+        - Disk I/O/Storage Performance
+        - Database Query Performance
+        - Container Startup Time
+        - AI Model Inference Speed
+        - Agent Coordination Latency
+        - Concurrent Request Handling
+        - Resource Scaling Issues
+        - Other (specify)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: affected_component
+    attributes:
+      label: Affected Component
+      description: Which component has performance issues?
+      options:
+        - vLLM Model Serving (Inference)
+        - Authentication Service
+        - Memory API
+        - Orchestrator/Agent Coordination
+        - Vector Database (Qdrant)
+        - Redis Cache
+        - PostgreSQL Database
+        - Langfuse Observability
+        - Ray Cluster
+        - Docker Containers
+        - Overall System
+        - Multiple Components
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Performance Impact
+      description: How severe is the performance issue?
+      options:
+        - Critical (System unusably slow)
+        - High (Significantly impacts productivity)
+        - Medium (Noticeable but manageable)
+        - Low (Minor optimization opportunity)
+    validations:
+      required: true
+
+  - type: textarea
+    id: performance_description
+    attributes:
+      label: Performance Issue Description
+      description: Detailed description of the performance problem
+      placeholder: |
+        Describe the performance issue:
+        - What operation is slow?
+        - How slow is it vs expected?
+        - When does the issue occur?
+        - Is it consistent or intermittent?
+    validations:
+      required: true
+
+  - type: textarea
+    id: performance_metrics
+    attributes:
+      label: Performance Metrics
+      description: Quantitative measurements of the performance issue
+      placeholder: |
+        Performance data:
+        - Response times: Current vs Expected
+        - Resource usage: CPU%, Memory%, GPU%
+        - Throughput: Requests/second
+        - Latency: Average, P95, P99
+        - Error rates during performance issues
+        
+        Example:
+        - API response time: 5000ms (expected: <500ms)
+        - CPU usage: 90% (expected: <60%)
+        - Memory usage: 8GB (expected: <4GB)
+      render: markdown
+
+  - type: textarea
+    id: reproduction_steps
+    attributes:
+      label: Steps to Reproduce Performance Issue
+      description: How to reproduce the performance problem
+      placeholder: |
+        Reproduction steps:
+        1. Start specific services: `make compose-up`
+        2. Configure with: [specific settings]
+        3. Run workload: [specific commands/requests]
+        4. Monitor with: [monitoring tools]
+        5. Observe performance degradation
+    validations:
+      required: true
+
+  - type: textarea
+    id: system_specifications
+    attributes:
+      label: System Specifications
+      description: Hardware and software configuration
+      placeholder: |
+        System details:
+        - OS: Ubuntu 22.04 / Windows 11 / macOS
+        - CPU: AMD Ryzen 9 7950X / Intel i9-13900K
+        - RAM: 64GB DDR5-5600
+        - GPU: NVIDIA RTX 4090 24GB / RTX 3080 10GB
+        - Storage: NVMe SSD / SATA SSD / HDD
+        - Docker: 24.0.x
+        - Network: 1Gbps / 10Gbps
+    validations:
+      required: true
+
+  - type: textarea
+    id: workload_characteristics
+    attributes:
+      label: Workload Characteristics
+      description: Details about the workload causing performance issues
+      placeholder: |
+        Workload details:
+        - Number of concurrent users/agents
+        - Request rate (requests/second)
+        - Data size (input/output)
+        - Model parameters (for AI workloads)
+        - Batch sizes
+        - Duration of test
+        - Peak vs average load
+
+  - type: textarea
+    id: monitoring_output
+    attributes:
+      label: Performance Monitoring Output
+      description: System monitoring data during the issue
+      placeholder: |
+        # Docker stats
+        docker stats --no-stream
+        
+        # System resources
+        htop/top output
+        
+        # GPU monitoring (if applicable)
+        nvidia-smi
+        
+        # Network monitoring
+        netstat -i
+        
+        # Application-specific metrics
+        curl http://localhost:8005/stats
+      render: bash
+
+  - type: textarea
+    id: profiling_data
+    attributes:
+      label: Profiling Data
+      description: Performance profiling information
+      placeholder: |
+        Profiling results:
+        - CPU profiling (flame graphs)
+        - Memory profiling
+        - GPU profiling (if applicable)
+        - Database query analysis
+        - Network trace analysis
+        - Application-specific profiling
+
+  - type: checkboxes
+    id: optimization_attempts
+    attributes:
+      label: Optimization Attempts
+      description: What optimizations have you tried?
+      options:
+        - label: Adjusted container resource limits
+        - label: Modified configuration parameters
+        - label: Tested different batch sizes
+        - label: Optimized database queries
+        - label: Tuned caching strategies
+        - label: Experimented with different hardware
+        - label: Tried different deployment methods
+
+  - type: textarea
+    id: expected_performance
+    attributes:
+      label: Expected Performance
+      description: What performance do you expect?
+      placeholder: |
+        Performance expectations:
+        - Target response time: <200ms
+        - Target throughput: >100 req/s
+        - Target resource usage: <50% CPU
+        - Baseline comparisons
+        - Industry benchmarks
+        - Previous version performance
+
+  - type: textarea
+    id: business_impact
+    attributes:
+      label: Business/Usage Impact
+      description: How does this performance issue affect usage?
+      placeholder: |
+        Impact on usage:
+        - User experience degradation
+        - Operational costs (compute/cloud)
+        - Development productivity
+        - System scalability limits
+        - SLA/performance targets missed
+
+  - type: textarea
+    id: optimization_ideas
+    attributes:
+      label: Optimization Ideas
+      description: Your suggestions for performance improvements
+      placeholder: |
+        Optimization suggestions:
+        - Code optimizations
+        - Configuration changes
+        - Architecture improvements
+        - Caching strategies
+        - Database optimizations
+        - Hardware recommendations
+
+  - type: checkboxes
+    id: testing_scope
+    attributes:
+      label: Testing Scope
+      description: What testing environments were used?
+      options:
+        - label: Local development environment
+        - label: Docker container deployment
+        - label: GHCR container deployment
+        - label: Production-like environment
+        - label: Load testing environment
+        - label: Multiple hardware configurations
+
+  - type: dropdown
+    id: urgency
+    attributes:
+      label: Optimization Urgency
+      description: How urgent is this performance optimization?
+      options:
+        - Critical (Blocking production use)
+        - High (Significantly impacting users)
+        - Medium (Important improvement)
+        - Low (Nice-to-have optimization)

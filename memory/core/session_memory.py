@@ -16,7 +16,7 @@ import redis.asyncio as aioredis
 from redis.asyncio import Redis
 
 from .config import RedisConfig
-from .memory_manager import MemoryEntry, MemoryQuery, MemoryType
+from .models import MemoryEntry, MemoryQuery, MemoryType
 
 logger = logging.getLogger(__name__)
 

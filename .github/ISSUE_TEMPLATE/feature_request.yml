@@ -1,0 +1,212 @@
+name: ✨ Feature Request
+description: Suggest a new feature or enhancement for vLLM Local Swarm
+title: "✨ [FEATURE]: "
+labels: ["enhancement", "needs-discussion"]
+assignees:
+  - tbowman01
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## ✨ Feature Request
+        
+        We'd love to hear your ideas for improving vLLM Local Swarm! Please provide detailed information about your feature request.
+
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      description: Please confirm you have completed the following
+      options:
+        - label: I have searched existing issues for similar requests
+          required: true
+        - label: I have reviewed the project roadmap and documentation
+          required: true
+        - label: This feature aligns with the project's security-first philosophy
+          required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Feature Category
+      description: What type of feature are you requesting?
+      options:
+        - Authentication & Security Enhancement
+        - AI/ML Model Integration
+        - Agent Coordination & Memory
+        - Performance Optimization
+        - Observability & Monitoring
+        - Developer Experience
+        - API Enhancement
+        - Documentation Improvement
+        - Container/Deployment Feature
+        - CI/CD Pipeline Enhancement
+        - Other (please specify)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority Level
+      description: How important is this feature?
+      options:
+        - Critical (Essential for production use)
+        - High (Significantly improves functionality)
+        - Medium (Nice-to-have improvement)
+        - Low (Minor enhancement)
+    validations:
+      required: true
+
+  - type: textarea
+    id: feature_summary
+    attributes:
+      label: Feature Summary
+      description: Provide a clear, concise description of the feature
+      placeholder: Brief summary of the requested feature...
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem_statement
+    attributes:
+      label: Problem Statement
+      description: What problem does this feature solve?
+      placeholder: |
+        Describe the problem or limitation this feature addresses:
+        - Current workflow limitations
+        - Pain points in user experience
+        - Performance bottlenecks
+        - Security concerns
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed_solution
+    attributes:
+      label: Proposed Solution
+      description: Describe your proposed solution in detail
+      placeholder: |
+        Detailed description of how you envision this feature working:
+        - User interface or API changes
+        - Implementation approach
+        - Integration with existing services
+        - Security considerations
+    validations:
+      required: true
+
+  - type: textarea
+    id: user_stories
+    attributes:
+      label: User Stories
+      description: Describe how users will benefit from this feature
+      placeholder: |
+        Example user stories:
+        - As a developer, I want to... so that I can...
+        - As a system administrator, I need to... because...
+        - As an AI practitioner, I would like to... to enable...
+
+  - type: textarea
+    id: technical_requirements
+    attributes:
+      label: Technical Requirements
+      description: Technical specifications or requirements for this feature
+      placeholder: |
+        - API endpoints needed
+        - Database schema changes
+        - New dependencies
+        - Performance requirements
+        - Security requirements
+        - Scalability considerations
+
+  - type: textarea
+    id: use_cases
+    attributes:
+      label: Use Cases
+      description: Specific use cases where this feature would be valuable
+      placeholder: |
+        1. Use case 1: Description of scenario
+        2. Use case 2: Description of scenario
+        3. Use case 3: Description of scenario
+
+  - type: checkboxes
+    id: security_considerations
+    attributes:
+      label: Security Considerations
+      description: Security aspects of this feature (vLLM Local Swarm is security-first)
+      options:
+        - label: This feature maintains zero-trust architecture principles
+        - label: Authentication/authorization requirements considered
+        - label: Data encryption and privacy implications reviewed
+        - label: Audit logging and transparency requirements addressed
+        - label: No new security vulnerabilities introduced
+
+  - type: textarea
+    id: alternatives_considered
+    attributes:
+      label: Alternatives Considered
+      description: What other approaches have you considered?
+      placeholder: |
+        Alternative solutions or workarounds considered:
+        - Alternative approach 1: pros/cons
+        - Alternative approach 2: pros/cons
+        - Current workarounds being used
+
+  - type: dropdown
+    id: implementation_complexity
+    attributes:
+      label: Implementation Complexity
+      description: How complex do you think this feature would be to implement?
+      options:
+        - Simple (Small code changes, no new dependencies)
+        - Medium (Some architectural changes, new dependencies)
+        - Complex (Major architectural changes, significant effort)
+        - Unknown (Need technical analysis)
+
+  - type: textarea
+    id: success_criteria
+    attributes:
+      label: Success Criteria
+      description: How will we know this feature is successful?
+      placeholder: |
+        Success metrics and acceptance criteria:
+        - Performance benchmarks
+        - User adoption metrics
+        - Quality gates
+        - Testing requirements
+
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional Context
+      description: Any other context, mockups, or references
+      placeholder: |
+        Additional information:
+        - Screenshots or mockups
+        - Links to related resources
+        - Similar features in other projects
+        - Research or documentation
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution Interest
+      description: Are you interested in contributing to this feature?
+      options:
+        - label: I'm willing to help implement this feature
+        - label: I can provide testing and feedback
+        - label: I can contribute documentation
+        - label: I can help with design/mockups
+
+  - type: dropdown
+    id: timeline
+    attributes:
+      label: Desired Timeline
+      description: When would you like to see this feature?
+      options:
+        - ASAP (Critical need)
+        - Next major release
+        - Within 6 months
+        - When convenient
+        - No specific timeline

@@ -14,55 +14,12 @@ from typing import Any, Dict, List, Optional, Union
 from dataclasses import dataclass, asdict
 
 from .config import MemoryConfig
-from .session_memory import SessionMemory
-from .semantic_memory import SemanticMemory
-from .observability import ObservabilityManager
+from .models import MemoryEntry, MemoryQuery, MemoryType, MemoryStats
 
 logger = logging.getLogger(__name__)
 
 
-class MemoryType(Enum):
-    """Types of memory storage."""
-    SESSION = "session"       # Short-term context within a task/conversation
-    SEMANTIC = "semantic"     # Long-term knowledge and embeddings
-    AGENT = "agent"          # Agent-specific persistent state
-    TRACE = "trace"          # Observability traces and logs
-
-
-@dataclass
-class MemoryEntry:
-    """Standard memory entry structure."""
-    id: str
-    type: MemoryType
-    content: Any
-    metadata: Dict[str, Any]
-    timestamp: datetime
-    agent_id: Optional[str] = None
-    session_id: Optional[str] = None
-    tags: List[str] = None
-    
-    def __post_init__(self):
-        if self.tags is None:
-            self.tags = []
-        if self.id is None:
-            self.id = str(uuid.uuid4())
-
-
-@dataclass
-class MemoryQuery:
-    """Memory query structure."""
-    query: str
-    type: Optional[MemoryType] = None
-    agent_id: Optional[str] = None
-    session_id: Optional[str] = None
-    tags: List[str] = None
-    limit: int = 10
-    similarity_threshold: float = 0.7
-    time_range: Optional[tuple] = None
-    
-    def __post_init__(self):
-        if self.tags is None:
-            self.tags = []
+# Models imported from .models module
 
 
 class MemoryManager:
@@ -76,9 +33,9 @@ class MemoryManager:
     - Implement cross-memory search and retrieval
     """
     
-    def __init__(self, config: MemoryConfig):
+    def __init__(self, config: Optional[MemoryConfig] = None):
         """Initialize memory manager with configuration."""
-        self.config = config
+        self.config = config  # Allow None config for minimal mode
         self.logger = logging.getLogger(f"{__name__}.MemoryManager")
         
         # Initialize subsystems
@@ -95,32 +52,44 @@ class MemoryManager:
         try:
             self.logger.info("Initializing memory management system...")
             
+            # Skip initialization if no config provided (minimal mode)
+            if self.config is None:
+                self.logger.info("Running in minimal mode without persistent memory")
+                self._initialized = True
+                return
+            
+            # Delayed imports to avoid circular imports
+            from .session_memory import SessionMemory
+            # from .semantic_memory import SemanticMemory  # Disabled due to dependency issues
+            from .observability import ObservabilityManager
+            
             # Initialize session memory (Redis)
-            if self.config.session_memory_enabled:
-                self.session_memory = SessionMemory(self.config.redis)
+            if getattr(self.config, 'session_memory_enabled', True):
+                self.session_memory = SessionMemory(getattr(self.config, 'redis', None))
                 await self.session_memory.initialize()
                 self.logger.info("Session memory initialized")
             
-            # Initialize semantic memory (Vector DB)
-            if self.config.semantic_memory_enabled:
-                self.semantic_memory = SemanticMemory(
-                    self.config.qdrant, 
-                    self.config.embedding
-                )
-                await self.semantic_memory.initialize()
-                self.logger.info("Semantic memory initialized")
+            # Initialize semantic memory (Vector DB) - Disabled for now
+            # if getattr(self.config, 'semantic_memory_enabled', False):
+            #     self.semantic_memory = SemanticMemory(
+            #         self.config.qdrant, 
+            #         self.config.embedding
+            #     )
+            #     await self.semantic_memory.initialize()
+            #     self.logger.info("Semantic memory initialized")
             
-            # Initialize observability (Langfuse + ClickHouse)
-            if self.config.observability_enabled:
-                self.observability = ObservabilityManager(
-                    self.config.langfuse,
-                    self.config.clickhouse
-                )
-                await self.observability.initialize()
-                self.logger.info("Observability system initialized")
+            # Initialize observability (Langfuse + ClickHouse) - Disabled for now
+            # if getattr(self.config, 'observability_enabled', False):
+            #     self.observability = ObservabilityManager(
+            #         self.config.langfuse,
+            #         self.config.clickhouse
+            #     )
+            #     await self.observability.initialize()
+            #     self.logger.info("Observability system initialized")
             
-            # Start background cleanup task
-            self._cleanup_task = asyncio.create_task(self._cleanup_loop())
+            # Start background cleanup task only if not in minimal mode
+            if self.config is not None:
+                self._cleanup_task = asyncio.create_task(self._cleanup_loop())
             
             self._initialized = True
             self.logger.info("Memory management system fully initialized")
@@ -421,6 +390,10 @@ class MemoryManager:
             "end_time": max([e.timestamp for e in entries]) if entries else None
         }
     
+    async def get_stats(self) -> Dict[str, Any]:
+        """Get memory system stats (alias for get_system_stats)."""
+        return await self.get_system_stats()
+    
     async def get_system_stats(self) -> Dict[str, Any]:
         """
         Get overall memory system statistics.
@@ -430,18 +403,29 @@ class MemoryManager:
         """
         stats = {
             "initialized": self._initialized,
-            "timestamp": datetime.utcnow(),
+            "timestamp": datetime.now().isoformat(),
+            "mode": "minimal" if self.config is None else "full",
             "subsystems": {}
         }
         
+        # Only check subsystems if they exist
         if self.session_memory:
-            stats["subsystems"]["session"] = await self.session_memory.get_stats()
+            try:
+                stats["subsystems"]["session"] = await self.session_memory.get_stats()
+            except Exception as e:
+                stats["subsystems"]["session"] = {"error": str(e)}
         
         if self.semantic_memory:
-            stats["subsystems"]["semantic"] = await self.semantic_memory.get_stats()
+            try:
+                stats["subsystems"]["semantic"] = await self.semantic_memory.get_stats()
+            except Exception as e:
+                stats["subsystems"]["semantic"] = {"error": str(e)}
         
         if self.observability:
-            stats["subsystems"]["observability"] = await self.observability.get_stats()
+            try:
+                stats["subsystems"]["observability"] = await self.observability.get_stats()
+            except Exception as e:
+                stats["subsystems"]["observability"] = {"error": str(e)}
         
         return stats
     
