@@ -20,6 +20,7 @@ This project is a **complete enterprise AI agent coordination platform** featuri
 - 🔐 **Security-First Architecture**: JWT authentication and role-based access
 - ⚡ **High Performance**: Redis queues processing 28.5 tasks/hour
 - 📚 **Complete API Documentation**: OpenAPI 3.0 with interactive Swagger UI
+- 🔍 **Advanced Bottleneck Detection**: AI-powered performance analysis and optimization
 
 ### 🎯 Enterprise Capabilities
 
@@ -31,6 +32,7 @@ This project is a **complete enterprise AI agent coordination platform** featuri
 * **⚡ Distributed Processing**: Redis-backed task queues with priority scheduling
 * **🔍 Advanced Workflows**: Research, code review, and content creation pipelines
 * **📚 Developer Experience**: Complete API docs, examples, and interactive interfaces
+* **🔍 Performance Optimization**: Automatic bottleneck detection with intelligent optimization recommendations
 
 ---
 
@@ -471,6 +473,51 @@ Agents can:
 * **Qdrant UI**: `http://localhost:6333/dashboard` - Vector database management
 * **Open WebUI** (optional): `http://localhost:8080` - Interactive chat interface
 * **Langflow** (optional): `http://localhost:7860` - Visual workflow builder
+
+## 🔍 Bottleneck Detection & Performance Optimization
+
+Advanced AI-powered bottleneck detection system with automatic optimization capabilities:
+
+### Quick Performance Analysis
+```bash
+# Basic bottleneck detection
+python scripts/bottleneck_cli.py
+
+# Analyze last 24 hours with auto-fixes  
+python scripts/bottleneck_cli.py --time-range 24h --fix --threshold 15
+
+# Export detailed analysis
+python scripts/bottleneck_cli.py --export analysis.json --verbose
+```
+
+### Continuous Performance Monitoring
+```bash
+# Start continuous monitoring with auto-optimization
+python scripts/bottleneck_cli.py --monitor --fix --monitor-interval 120
+```
+
+### Key Features:
+- **🔍 Real-time Analysis** - Continuous performance monitoring across all components
+- **🤖 AI-Powered Detection** - Smart identification of performance bottlenecks
+- **⚡ Automatic Optimization** - Intelligent application of performance fixes
+- **📊 Comprehensive Metrics** - Analysis of agents, tasks, memory, network, and resources
+- **🎯 Optimization Recommendations** - Data-driven suggestions for improvements
+
+### Analyzed Components:
+- **Agent Communication** - Message delays, response times, coordination overhead
+- **Task Processing** - Queue times, completion rates, agent utilization
+- **Memory System** - Cache hit rates, search performance, storage I/O
+- **Network Performance** - API response times, timeout rates, concurrency
+- **Resource Utilization** - CPU, memory, disk, GPU usage patterns
+
+### Available Optimizations:
+- **Cache Tuning** - Redis memory allocation, clustering, smart preloading
+- **Resource Scaling** - Ray workers, GPU utilization, container limits  
+- **Network Optimization** - HTTP/2, connection pooling, compression
+- **Coordination Improvements** - Hierarchical routing, load balancing
+- **Memory Optimization** - Vector DB tuning, garbage collection, pools
+
+See [📖 Bottleneck Detection Guide](docs/BOTTLENECK_DETECTION.md) for detailed documentation.
 
 ---
 
