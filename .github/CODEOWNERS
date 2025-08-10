@@ -1,0 +1,52 @@
+# 🔐 Code Owners - vLLM Local Swarm
+
+# This file defines code ownership for the vLLM Local Swarm project.
+# Code owners are automatically requested for review when someone opens a pull request.
+
+# Global ownership
+* @tbowman01
+
+# Authentication & Security
+/auth/ @tbowman01
+/.github/workflows/ci-cd-auth.yml @tbowman01
+/.github/workflows/security-scan.yml @tbowman01
+/tests/auth/ @tbowman01
+/tests/security/ @tbowman01
+
+# Container & Infrastructure
+/docker/ @tbowman01
+/Dockerfile* @tbowman01
+/docker-compose*.yml @tbowman01
+/.github/workflows/container-publish.yml @tbowman01
+/scripts/deploy/ @tbowman01
+
+# Orchestration & AI/ML
+/orchestrator/ @tbowman01
+/memory/ @tbowman01
+/tests/integration/ @tbowman01
+/tests/performance/ @tbowman01
+
+# CI/CD & GitHub Actions
+/.github/ @tbowman01
+/Makefile @tbowman01
+/scripts/ @tbowman01
+
+# Documentation
+/docs/ @tbowman01
+/README.md @tbowman01
+/CLAUDE.md @tbowman01
+/DEVELOPMENT.md @tbowman01
+/DOCKER_BUILD.md @tbowman01
+/*.md @tbowman01
+
+# Configuration
+/.env* @tbowman01
+/pyproject.toml @tbowman01
+/requirements*.txt @tbowman01
+
+# Security-sensitive files (require explicit approval)
+/.github/workflows/ @tbowman01
+/auth/auth_service.py @tbowman01
+/auth/middleware.py @tbowman01
+/docker/Dockerfile* @tbowman01
+/scripts/deploy/ @tbowman01
