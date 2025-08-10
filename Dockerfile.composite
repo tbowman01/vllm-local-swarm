@@ -1,0 +1,108 @@
+# 🐳 vLLM Local Swarm - Composite Container
+# Complete authenticated AI orchestration platform
+# Based on Python 3.11 with all services included
+
+FROM python:3.11-slim as base
+
+# Install system dependencies for all services
+RUN apt-get update && apt-get install -y \
+    gcc g++ build-essential libpq-dev \
+    curl wget git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /app
+
+# Copy requirements and install Python dependencies
+COPY requirements.txt /app/
+COPY requirements.memory.txt /app/
+COPY auth/requirements.txt /app/auth-requirements.txt
+
+# Install all Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir -r requirements.memory.txt \
+    && pip install --no-cache-dir -r auth-requirements.txt
+
+# Copy application source code
+COPY src/ /app/src/
+COPY agents/ /app/agents/
+COPY memory/ /app/memory/
+COPY auth/ /app/auth/
+COPY coordination/ /app/coordination/
+COPY docker/scripts/ /app/docker/scripts/
+
+# Create runtime user for security
+RUN useradd -m -u 1000 vllm-user && \
+    chown -R vllm-user:vllm-user /app
+
+# Create startup script for multi-service orchestration
+RUN cat > /app/start.sh << 'EOF'
+#!/bin/bash
+set -e
+
+# Environment defaults
+export AUTH_PORT=${AUTH_PORT:-8005}
+export ORCHESTRATOR_PORT=${ORCHESTRATOR_PORT:-8004}
+export MEMORY_PORT=${MEMORY_PORT:-8003}
+
+# Start authentication service in background
+echo "🔐 Starting Authentication Service..."
+python /app/auth/auth_service.py &
+AUTH_PID=$!
+
+# Wait for auth service to be ready
+sleep 10
+
+# Start orchestrator with auth
+echo "🎯 Starting Orchestrator with Authentication..."
+python /app/docker/scripts/orchestrator_server_auth.py &
+ORCH_PID=$!
+
+# Start memory API
+echo "💾 Starting Memory API..."
+python /app/memory/api/memory_api.py &
+MEMORY_PID=$!
+
+# Function to cleanup processes
+cleanup() {
+    echo "📢 Shutting down services..."
+    kill $AUTH_PID $ORCH_PID $MEMORY_PID 2>/dev/null || true
+    wait
+}
+
+# Set trap for cleanup
+trap cleanup SIGTERM SIGINT
+
+# Wait for all services
+echo "✅ All services started. Monitoring..."
+wait
+
+EOF
+
+RUN chmod +x /app/start.sh
+
+# Health check for all services
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8005/health && \
+        curl -f http://localhost:8004/health && \
+        curl -f http://localhost:8003/health || exit 1
+
+# Expose all service ports
+EXPOSE 8003 8004 8005
+
+# Switch to non-root user
+USER vllm-user
+
+# Environment variables
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+# Default command
+CMD ["/app/start.sh"]
+
+# Build metadata
+LABEL org.opencontainers.image.title="vLLM Local Swarm"
+LABEL org.opencontainers.image.description="Complete authenticated AI orchestration platform"
+LABEL org.opencontainers.image.source="https://github.com/tbowman01/vllm-local-swarm"
+LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.vendor="vLLM Local Swarm Project"

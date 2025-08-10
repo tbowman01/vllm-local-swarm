@@ -1,0 +1,144 @@
+# 🐳 Docker Compose for GitHub Container Registry Images
+# Use published containers from ghcr.io for production deployment
+
+services:
+  # Authentication Service from GHCR
+  auth-service:
+    image: ghcr.io/tbowman01/vllm-local-swarm/auth-service:latest
+    container_name: vllm-auth-service-ghcr
+    ports:
+      - "8005:8005"
+    environment:
+      AUTH_PORT: 8005
+      DATABASE_URL: postgresql+asyncpg://langfuse:${LANGFUSE_DB_PASSWORD:-langfuse123}@langfuse-db:5432/auth
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-secret-jwt-key-change-this-in-production}
+      JWT_ALGORITHM: HS256
+      JWT_EXPIRATION_HOURS: ${JWT_EXPIRATION_HOURS:-24}
+      REFRESH_TOKEN_EXPIRATION_DAYS: ${REFRESH_TOKEN_EXPIRATION_DAYS:-30}
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - vllm-network
+    restart: unless-stopped
+
+  # Orchestrator Service from GHCR
+  orchestrator:
+    image: ghcr.io/tbowman01/vllm-local-swarm/orchestrator:latest
+    container_name: vllm-orchestrator-ghcr
+    ports:
+      - "8004:8004"
+    environment:
+      ORCHESTRATOR_PORT: 8004
+      MODEL_SERVICE_URL: http://vllm-phi:8000
+      MEMORY_API_URL: http://memory-api:8003
+      REDIS_URL: redis://redis:6379
+      AUTH_SERVICE_URL: http://auth-service:8005
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-secret-jwt-key-change-this-in-production}
+      PYTHONPATH: /app:/app/auth
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - vllm-network
+    restart: unless-stopped
+
+  # Memory API Service from GHCR
+  memory-api:
+    image: ghcr.io/tbowman01/vllm-local-swarm/memory-api:latest
+    container_name: vllm-memory-api-ghcr
+    ports:
+      - "8003:8003"
+    environment:
+      API_PORT: 8003
+      REDIS_URL: redis://redis:6379
+      QDRANT_URL: http://qdrant:6333
+      AUTH_SERVICE_URL: http://auth-service:8005
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-secret-jwt-key-change-this-in-production}
+      REQUIRE_AUTH: ${MEMORY_REQUIRE_AUTH:-true}
+      PYTHONPATH: /app:/app/auth
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - vllm-network
+    restart: unless-stopped
+
+  # All-in-One Composite Service from GHCR
+  vllm-swarm-composite:
+    image: ghcr.io/tbowman01/vllm-local-swarm/vllm-swarm:latest
+    container_name: vllm-swarm-all-in-one
+    ports:
+      - "8005:8005"  # Auth service
+      - "8004:8004"  # Orchestrator
+      - "8003:8003"  # Memory API
+    environment:
+      # Authentication
+      DATABASE_URL: postgresql+asyncpg://langfuse:${LANGFUSE_DB_PASSWORD:-langfuse123}@langfuse-db:5432/auth
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-secret-jwt-key-change-this-in-production}
+      
+      # Orchestrator
+      MODEL_SERVICE_URL: http://vllm-phi:8000
+      
+      # Memory API
+      QDRANT_URL: http://qdrant:6333
+      
+      # Ports
+      AUTH_PORT: 8005
+      ORCHESTRATOR_PORT: 8004
+      MEMORY_PORT: 8003
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/health", "&&", "curl", "-f", "http://localhost:8004/health", "&&", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - vllm-network
+    restart: unless-stopped
+    profiles:
+      - all-in-one  # Only start with --profile all-in-one
+
+networks:
+  vllm-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# Example usage:
+# Individual services: docker-compose -f docker-compose.yml -f docker-compose.ghcr.yml up -d
+# All-in-one:         docker-compose -f docker-compose.yml -f docker-compose.ghcr.yml --profile all-in-one up -d
