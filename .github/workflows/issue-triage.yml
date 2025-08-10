@@ -1,0 +1,256 @@
+name: 🎯 Intelligent Issue Triage
+
+on:
+  issues:
+    types: [opened, edited, reopened]
+  schedule:
+    - cron: '0 9 * * MON'  # Weekly Monday triage
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 🏷️ Auto-label based on title and content
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const issue = context.payload.issue;
+          const title = issue.title.toLowerCase();
+          const body = (issue.body || '').toLowerCase();
+          
+          const labels = [];
+          
+          // Priority labeling based on keywords
+          if (title.includes('critical') || title.includes('urgent') || title.includes('security')) {
+            labels.push('priority:critical');
+          } else if (title.includes('important') || body.includes('priority: high')) {
+            labels.push('priority:high');
+          } else if (title.includes('nice to have') || body.includes('priority: low')) {
+            labels.push('priority:low');
+          } else {
+            labels.push('priority:medium');
+          }
+          
+          // Component labeling
+          if (title.includes('auth') || body.includes('authentication')) {
+            labels.push('component:authentication');
+          }
+          if (title.includes('docker') || title.includes('container')) {
+            labels.push('component:docker');
+          }
+          if (title.includes('ci/cd') || title.includes('github actions')) {
+            labels.push('component:ci-cd');
+          }
+          if (title.includes('vllm') || title.includes('model')) {
+            labels.push('component:ai-model');
+          }
+          if (title.includes('memory') || title.includes('qdrant') || title.includes('redis')) {
+            labels.push('component:data');
+          }
+          if (title.includes('orchestrator') || title.includes('sparc')) {
+            labels.push('component:orchestration');
+          }
+          if (title.includes('docs') || title.includes('documentation')) {
+            labels.push('component:documentation');
+          }
+          
+          // Type labeling  
+          if (title.includes('bug') || title.includes('fix') || title.includes('error')) {
+            labels.push('type:bug');
+          } else if (title.includes('feature') || title.includes('enhancement') || title.includes('add')) {
+            labels.push('type:feature');
+          } else if (title.includes('refactor') || title.includes('improve')) {
+            labels.push('type:improvement');
+          } else if (title.includes('test') || title.includes('testing')) {
+            labels.push('type:testing');
+          }
+          
+          // Difficulty estimation
+          if (body.includes('complex') || body.includes('architecture') || body.includes('major')) {
+            labels.push('effort:high');
+          } else if (body.includes('simple') || body.includes('quick') || body.includes('minor')) {
+            labels.push('effort:low');
+          } else {
+            labels.push('effort:medium');
+          }
+          
+          // Apply labels
+          if (labels.length > 0) {
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              labels: labels
+            });
+          }
+
+    - name: 🎯 Auto-assign based on component
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const issue = context.payload.issue;
+          const title = issue.title.toLowerCase();
+          const body = (issue.body || '').toLowerCase();
+          
+          let assignee = null;
+          
+          // Component-based assignment (customize based on team)
+          if (title.includes('auth') || body.includes('authentication') || body.includes('security')) {
+            assignee = 'tbowman01';  // Security/Auth specialist
+          } else if (title.includes('docker') || title.includes('ci/cd') || title.includes('deployment')) {
+            assignee = 'tbowman01';  // DevOps specialist  
+          } else if (title.includes('vllm') || title.includes('ai') || title.includes('model')) {
+            assignee = 'tbowman01';  // AI/ML specialist
+          } else if (title.includes('docs') || title.includes('documentation')) {
+            assignee = 'tbowman01';  // Documentation maintainer
+          }
+          
+          if (assignee && !issue.assignees.length) {
+            await github.rest.issues.addAssignees({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              assignees: [assignee]
+            });
+          }
+
+    - name: 📊 Create issue summary comment
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const issue = context.payload.issue;
+          
+          // Only add summary for new issues
+          if (context.payload.action === 'opened') {
+            const summary = `
+          ## 🤖 Automated Issue Triage
+          
+          **Issue Analysis:**
+          - **Component**: Auto-detected from title and content
+          - **Priority**: Assigned based on keywords and urgency
+          - **Effort**: Estimated based on complexity indicators
+          - **Assignment**: Auto-assigned to relevant team member
+          
+          **Next Steps:**
+          1. Review auto-assigned labels and adjust if needed
+          2. Confirm priority and effort estimates
+          3. Add milestone if part of planned release
+          4. Link to related issues if applicable
+          
+          **Project Context:**
+          This issue is part of the vLLM Local Swarm project, which has achieved 100% core infrastructure completion. Please consider priority in context of current production-ready status.
+          
+          ---
+          *Auto-generated by Issue Triage Workflow*
+            `;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: summary
+            });
+          }
+
+  weekly-review:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    
+    steps:
+    - name: 📋 Generate weekly issue report
+      uses: actions/github-script@v7
+      with:
+        script: |
+          // Get all open issues
+          const issues = await github.rest.issues.listForRepo({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            state: 'open',
+            per_page: 100
+          });
+          
+          // Categorize issues
+          const categories = {
+            'priority:critical': [],
+            'priority:high': [],
+            'priority:medium': [],
+            'priority:low': [],
+            'no-priority': []
+          };
+          
+          issues.data.forEach(issue => {
+            const labels = issue.labels.map(l => l.name);
+            let categorized = false;
+            
+            for (const priority in categories) {
+              if (priority !== 'no-priority' && labels.includes(priority)) {
+                categories[priority].push(issue);
+                categorized = true;
+                break;
+              }
+            }
+            
+            if (!categorized) {
+              categories['no-priority'].push(issue);
+            }
+          });
+          
+          // Create report
+          let report = `# 📊 Weekly Issue Triage Report\n\n`;
+          report += `**Generated**: ${new Date().toISOString().split('T')[0]}\n`;
+          report += `**Total Open Issues**: ${issues.data.length}\n\n`;
+          
+          for (const [category, issueList] of Object.entries(categories)) {
+            if (issueList.length > 0) {
+              report += `## ${category.replace(':', ' ').replace('-', ' ').toUpperCase()} (${issueList.length})\n\n`;
+              
+              issueList.forEach(issue => {
+                const assignee = issue.assignees.length > 0 ? ` - @${issue.assignees[0].login}` : ' - Unassigned';
+                report += `- #${issue.number}: ${issue.title}${assignee}\n`;
+              });
+              
+              report += '\n';
+            }
+          }
+          
+          console.log(report);
+          
+          // Post as discussion or issue comment (customize as needed)
+          // await github.rest.issues.create({
+          //   owner: context.repo.owner,
+          //   repo: context.repo.repo,
+          //   title: `Weekly Issue Triage Report - ${new Date().toISOString().split('T')[0]}`,
+          //   body: report,
+          //   labels: ['triage', 'report']
+          // });
+
+  stale-issue-cleanup:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    
+    steps:
+    - name: 🧹 Mark stale issues
+      uses: actions/stale@v9
+      with:
+        repo-token: ${{ secrets.GITHUB_TOKEN }}
+        stale-issue-message: |
+          This issue has been automatically marked as stale because it has not had recent activity. 
+          
+          **Project Status Update**: The vLLM Local Swarm has achieved 100% core infrastructure completion with all authentication, orchestration, and container publishing systems fully operational.
+          
+          If this issue is still relevant to the current production-ready system:
+          - Please comment to keep it open
+          - Update priority labels if needed  
+          - Consider if it should be part of future roadmap
+          
+          This issue will be automatically closed in 7 days if no further activity occurs.
+        days-before-stale: 30
+        days-before-close: 7
+        stale-issue-label: 'status:stale'
+        exempt-issue-labels: 'priority:critical,priority:high,status:in-progress'
+        operations-per-run: 30
