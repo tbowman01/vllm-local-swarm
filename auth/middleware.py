@@ -5,15 +5,15 @@ Provides authentication and authorization middleware for FastAPI applications.
 """
 
 import logging
-from typing import Optional, List, Callable
 from functools import wraps
+from typing import Callable, List, Optional
 
+import httpx
 from fastapi import HTTPException, Request, status
 from fastapi.security import HTTPBearer
+from jose import jwt
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
-import httpx
-from jose import jwt
 
 logger = logging.getLogger(__name__)
 

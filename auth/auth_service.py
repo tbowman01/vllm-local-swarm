@@ -5,24 +5,24 @@ Authentication Service for vLLM Local Swarm
 Provides JWT-based authentication and authorization for all swarm services.
 """
 
+import hashlib
 import json
 import logging
 import os
+import secrets
 from datetime import datetime, timedelta
 from typing import List, Optional
-import hashlib
-import secrets
 
-from fastapi import FastAPI, HTTPException, Depends, Header, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel, EmailStr, Field
+import redis.asyncio as redis
 import uvicorn
+from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import jwt
 from passlib.context import CryptContext
-import redis.asyncio as redis
-from sqlalchemy import Column, String, DateTime, Boolean, Text
+from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy import Boolean, Column, DateTime, String, Text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

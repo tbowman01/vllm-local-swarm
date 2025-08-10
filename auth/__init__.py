@@ -10,25 +10,24 @@ __author__ = "vLLM Local Swarm Team"
 
 # Import core authentication components
 from .auth_service import (
-    create_access_token,
-    create_refresh_token,
-    verify_token,
-    verify_password,
-    get_password_hash,
-    UserRegisterRequest,
-    UserLoginRequest,
-    TokenResponse,
-    UserResponse,
     ApiKeyCreateRequest,
     ApiKeyResponse,
+    TokenResponse,
+    UserLoginRequest,
+    UserRegisterRequest,
+    UserResponse,
+    create_access_token,
+    create_refresh_token,
+    get_password_hash,
+    verify_password,
+    verify_token,
 )
-
 from .middleware import (
     AuthConfig,
     AuthenticationMiddleware,
     RateLimitMiddleware,
-    require_auth,
     get_current_user,
+    require_auth,
 )
 
 __all__ = [
