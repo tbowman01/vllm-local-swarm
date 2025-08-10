@@ -66,7 +66,7 @@ services:
       QDRANT__SERVICE__HTTP_PORT: 6333
       QDRANT__SERVICE__GRPC_PORT: 6334
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/"]
+      test: ["CMD", "timeout", "5", "bash", "-c", "(echo >/dev/tcp/localhost/6333) 2>/dev/null"]
       interval: 30s
       timeout: 10s
       retries: 3
