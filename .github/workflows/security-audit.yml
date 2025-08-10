@@ -1,0 +1,236 @@
+name: 🛡️ Security Audit & Dependency Scanning
+
+on:
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'requirements*.txt'
+      - 'auth/requirements.txt'
+      - 'package*.json'
+      - 'poetry.lock'
+      - 'Pipfile.lock'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'requirements*.txt'
+      - 'auth/requirements.txt'
+      - 'package*.json'
+      - 'poetry.lock'
+      - 'Pipfile.lock'
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  dependency-security-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
+    strategy:
+      matrix:
+        include:
+          - name: "Python Dependencies"
+            requirements: "requirements.txt"
+            scanner: "safety"
+          - name: "Auth Dependencies" 
+            requirements: "auth/requirements.txt"
+            scanner: "safety"
+          - name: "Memory Dependencies"
+            requirements: "requirements.memory.txt"
+            scanner: "safety"
+
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v4
+
+    - name: 🐍 Set up Python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: 🔧 Install security tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install safety bandit semgrep pip-audit
+
+    - name: 🛡️ Run Safety check on ${{ matrix.name }}
+      run: |
+        if [ -f "${{ matrix.requirements }}" ]; then
+          echo "🔍 Scanning ${{ matrix.requirements }} for known vulnerabilities..."
+          safety check --requirement ${{ matrix.requirements }} --json --output safety-${{ strategy.job-index }}.json || true
+          safety check --requirement ${{ matrix.requirements }} --short-report
+        else
+          echo "⚠️ ${{ matrix.requirements }} not found, skipping..."
+        fi
+
+    - name: 🔍 Run pip-audit on ${{ matrix.name }}
+      run: |
+        if [ -f "${{ matrix.requirements }}" ]; then
+          echo "🔍 Running pip-audit on ${{ matrix.requirements }}..."
+          pip-audit --requirement ${{ matrix.requirements }} --format=json --output=pip-audit-${{ strategy.job-index }}.json || true
+          pip-audit --requirement ${{ matrix.requirements }}
+        else
+          echo "⚠️ ${{ matrix.requirements }} not found, skipping..."
+        fi
+
+    - name: 📤 Upload Security Scan Results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: security-scan-${{ strategy.job-index }}
+        path: |
+          safety-*.json
+          pip-audit-*.json
+        retention-days: 30
+
+  code-security-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v4
+
+    - name: 🐍 Set up Python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: 🔧 Install code security tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install bandit semgrep
+
+    - name: 🛡️ Run Bandit security scan
+      run: |
+        echo "🔍 Running Bandit security scan..."
+        bandit -r . -f json -o bandit-results.json || true
+        bandit -r . -ll  # Show only high and medium severity issues
+
+    - name: 🔍 Run Semgrep security scan
+      run: |
+        echo "🔍 Running Semgrep security analysis..."
+        semgrep --config=p/security-audit --json --output=semgrep-results.json . || true
+        semgrep --config=p/security-audit --severity=ERROR --severity=WARNING .
+
+    - name: 🔒 Check for secrets in code
+      run: |
+        echo "🔍 Checking for potential secrets..."
+        # Check for common secret patterns
+        if grep -r -i "password\|secret\|key\|token" --include="*.py" --include="*.js" --include="*.yaml" --include="*.yml" . | grep -v test | grep -v example; then
+          echo "⚠️ Potential secrets found in code (review above output)"
+          exit 1
+        else
+          echo "✅ No obvious secrets found in code"
+        fi
+
+    - name: 📤 Upload Code Security Results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: code-security-scan
+        path: |
+          bandit-results.json
+          semgrep-results.json
+        retention-days: 30
+
+    - name: 📤 Upload SARIF results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: semgrep-results.json
+        category: semgrep-security
+
+  docker-security-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
+    strategy:
+      matrix:
+        dockerfile:
+          - Dockerfile.composite
+          - docker/Dockerfile.auth
+          - docker/Dockerfile.orchestrator
+          - docker/Dockerfile.memory-api
+
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v4
+
+    - name: 🔧 Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: 🛡️ Run Hadolint on ${{ matrix.dockerfile }}
+      uses: hadolint/hadolint-action@v3.1.0
+      with:
+        dockerfile: ${{ matrix.dockerfile }}
+        format: sarif
+        output-file: hadolint-${{ strategy.job-index }}.sarif
+        no-fail: true
+
+    - name: 🔍 Run Trivy filesystem scan
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-fs-${{ strategy.job-index }}.sarif'
+
+    - name: 📤 Upload Dockerfile Security Results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: docker-security-${{ strategy.job-index }}
+        path: |
+          hadolint-*.sarif
+          trivy-fs-*.sarif
+        retention-days: 30
+
+    - name: 📤 Upload Docker Security SARIF
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: hadolint-${{ strategy.job-index }}.sarif
+        category: hadolint-${{ matrix.dockerfile }}
+
+  security-summary:
+    runs-on: ubuntu-latest
+    needs: [dependency-security-scan, code-security-scan, docker-security-scan]
+    if: always()
+
+    steps:
+    - name: 📋 Generate Security Summary
+      run: |
+        echo "## 🛡️ Security Audit Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 📊 Scan Results:" >> $GITHUB_STEP_SUMMARY
+        echo "- **Dependency Security**: ${{ needs.dependency-security-scan.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Code Security**: ${{ needs.code-security-scan.result }}" >> $GITHUB_STEP_SUMMARY  
+        echo "- **Docker Security**: ${{ needs.docker-security-scan.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🔍 Security Tools Used:" >> $GITHUB_STEP_SUMMARY
+        echo "- **Safety**: Python dependency vulnerability scanning" >> $GITHUB_STEP_SUMMARY
+        echo "- **pip-audit**: Python package audit" >> $GITHUB_STEP_SUMMARY
+        echo "- **Bandit**: Python code security analysis" >> $GITHUB_STEP_SUMMARY
+        echo "- **Semgrep**: Multi-language security pattern detection" >> $GITHUB_STEP_SUMMARY
+        echo "- **Hadolint**: Dockerfile best practices" >> $GITHUB_STEP_SUMMARY
+        echo "- **Trivy**: Filesystem vulnerability scanning" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 📈 Next Steps:" >> $GITHUB_STEP_SUMMARY
+        echo "1. Review detailed results in the **Security** tab" >> $GITHUB_STEP_SUMMARY
+        echo "2. Download artifacts for offline analysis" >> $GITHUB_STEP_SUMMARY
+        echo "3. Address any high/critical vulnerabilities found" >> $GITHUB_STEP_SUMMARY
+        echo "4. Update dependencies following the n, n-1, n-2 version policy" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "🤖 **Automated Security Audit** - vLLM Local Swarm Security-First Architecture" >> $GITHUB_STEP_SUMMARY

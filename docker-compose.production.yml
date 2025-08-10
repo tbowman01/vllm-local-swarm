@@ -1,0 +1,350 @@
+# 🏭 Production Docker Compose Configuration
+# vLLM Local Swarm - Enterprise Production Deployment
+# Security-hardened, high-availability, monitoring-enabled
+
+version: '3.8'
+
+services:
+  # 🔐 Authentication Service - Production Config
+  auth-service:
+    image: ghcr.io/tbowman01/vllm-local-swarm/auth-service:latest
+    container_name: vllm-auth-prod
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY_PROD}
+      - DATABASE_URL=${AUTH_DATABASE_URL_PROD}
+      - REDIS_URL=${REDIS_URL_PROD}
+      - RATE_LIMIT_MAX=1000
+      - RATE_LIMIT_WINDOW=900000  # 15 minutes
+      - SESSION_TIMEOUT=3600      # 1 hour
+      - LOG_LEVEL=warn
+    networks:
+      - vllm-production
+    ports:
+      - "127.0.0.1:8005:8005"  # Bind to localhost only
+    depends_on:
+      - redis-prod
+      - postgres-prod
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+
+  # 💾 Memory API - Production Config  
+  memory-api:
+    image: ghcr.io/tbowman01/vllm-local-swarm/memory-api:latest
+    container_name: vllm-memory-prod
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - REDIS_URL=${REDIS_URL_PROD}
+      - QDRANT_URL=${QDRANT_URL_PROD}
+      - API_PORT=8003
+      - MAX_MEMORY_SIZE=1024
+      - LOG_LEVEL=warn
+      - ENABLE_METRICS=true
+    networks:
+      - vllm-production
+    ports:
+      - "127.0.0.1:8003:8003"
+    depends_on:
+      - redis-prod
+      - qdrant-prod
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=200m
+
+  # 🎯 Orchestrator - Production Config
+  orchestrator:
+    image: ghcr.io/tbowman01/vllm-local-swarm/orchestrator:latest
+    container_name: vllm-orchestrator-prod
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - AUTH_SERVICE_URL=http://auth-service:8005
+      - MEMORY_API_URL=http://memory-api:8003
+      - VLLM_MODEL_URL=${VLLM_MODEL_URL_PROD}
+      - MAX_CONCURRENT_TASKS=10
+      - TASK_TIMEOUT=300000       # 5 minutes
+      - LOG_LEVEL=warn
+      - ENABLE_METRICS=true
+    networks:
+      - vllm-production
+    ports:
+      - "127.0.0.1:8004:8004"
+    depends_on:
+      - auth-service
+      - memory-api
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2.0'
+        reservations:
+          memory: 1G
+          cpus: '1.0'
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=500m
+
+  # 📊 Redis - Production Config
+  redis-prod:
+    image: redis:7-alpine
+    container_name: vllm-redis-prod
+    restart: unless-stopped
+    command: >
+      redis-server
+      --maxmemory 2gb
+      --maxmemory-policy allkeys-lru
+      --save 900 1 300 10 60 10000
+      --tcp-keepalive 300
+      --timeout 300
+      --requirepass ${REDIS_PASSWORD_PROD}
+      --appendonly yes
+      --appendfsync everysec
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD_PROD}
+    networks:
+      - vllm-production
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-prod-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "$REDIS_PASSWORD_PROD", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+        reservations:
+          memory: 1G
+          cpus: '0.5'
+    security_opt:
+      - no-new-privileges:true
+
+  # 🗄️ PostgreSQL - Production Config
+  postgres-prod:
+    image: postgres:15-alpine
+    container_name: vllm-postgres-prod
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB_PROD}
+      - POSTGRES_USER=${POSTGRES_USER_PROD}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD_PROD}
+      - POSTGRES_INITDB_ARGS="--encoding=UTF8 --locale=en_US.utf8"
+    networks:
+      - vllm-production
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-prod-data:/var/lib/postgresql/data
+      - ./docker/postgres/init-prod.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $POSTGRES_USER_PROD -d $POSTGRES_DB_PROD"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+    security_opt:
+      - no-new-privileges:true
+
+  # 🔍 Qdrant Vector DB - Production Config
+  qdrant-prod:
+    image: qdrant/qdrant:v1.7.4
+    container_name: vllm-qdrant-prod
+    restart: unless-stopped
+    environment:
+      - QDRANT__SERVICE__HTTP_PORT=6333
+      - QDRANT__SERVICE__GRPC_PORT=6334
+      - QDRANT__STORAGE__PERFORMANCE__MAX_OPTIMIZATION_THREADS=2
+      - QDRANT__STORAGE__PERFORMANCE__RECOVERY_MODE=strict
+    networks:
+      - vllm-production
+    ports:
+      - "127.0.0.1:6333:6333"
+      - "127.0.0.1:6334:6334"
+    volumes:
+      - qdrant-prod-data:/qdrant/storage
+    healthcheck:
+      test: ["CMD", "timeout", "5", "bash", "-c", "(echo >/dev/tcp/localhost/6333) 2>/dev/null"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2.0'
+        reservations:
+          memory: 1G
+          cpus: '1.0'
+    security_opt:
+      - no-new-privileges:true
+
+  # 🔄 Nginx Reverse Proxy - Production Load Balancer
+  nginx-prod:
+    image: nginx:alpine
+    container_name: vllm-nginx-prod
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx/prod.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/ssl:/etc/nginx/ssl:ro
+      - nginx-cache:/var/cache/nginx
+    networks:
+      - vllm-production
+    depends_on:
+      - auth-service
+      - memory-api
+      - orchestrator
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
+        reservations:
+          memory: 128M
+          cpus: '0.25'
+    security_opt:
+      - no-new-privileges:true
+
+  # 📊 Prometheus Monitoring
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: vllm-prometheus-prod
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-prod-data:/prometheus
+    networks:
+      - vllm-production
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+    security_opt:
+      - no-new-privileges:true
+
+  # 📈 Grafana Dashboards
+  grafana:
+    image: grafana/grafana:latest
+    container_name: vllm-grafana-prod
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD_PROD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SECURITY_DISABLE_GRAVATAR=true
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+    ports:
+      - "127.0.0.1:3001:3000"
+    volumes:
+      - grafana-prod-data:/var/lib/grafana
+      - ./docker/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./docker/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - vllm-production
+    depends_on:
+      - prometheus
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  redis-prod-data:
+    driver: local
+  postgres-prod-data:
+    driver: local
+  qdrant-prod-data:
+    driver: local
+  prometheus-prod-data:
+    driver: local
+  grafana-prod-data:
+    driver: local
+  nginx-cache:
+    driver: local
+
+networks:
+  vllm-production:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.25.0.0/16

@@ -41,7 +41,8 @@ help: ## Show this help message
 	@echo ""
 	@echo "$(YELLOW)💡 Quick Start Examples:$(NC)"
 	@echo "  make dev-up              # Development with local builds"
-	@echo "  make ghcr-up             # Development with GHCR containers"
+	@echo "  make ghcr-up             # Development with GHCR containers (auto-fallback)"
+	@echo "  make ghcr-composite      # All-in-one GHCR container"
 	@echo "  make auth-up             # With authentication enabled"
 	@echo "  make test                # Run all tests"
 	@echo "  make clean               # Clean everything"
@@ -99,15 +100,20 @@ ghcr-pull: ## Pull latest images from GitHub Container Registry
 	@echo "$(GREEN)✅ GHCR images pulled$(NC)"
 
 .PHONY: ghcr-up
-ghcr-up: ghcr-pull ## Start environment using GHCR containers
+ghcr-up: ## Start environment using GHCR containers (with fallback)
 	@echo "$(YELLOW)🚀 Starting environment with GHCR containers...$(NC)"
-	docker-compose -f $(COMPOSE_FILE) -f $(GHCR_COMPOSE_FILE) up -d
-	@$(MAKE) --no-print-directory show-endpoints
+	./scripts/deploy/ghcr-fallback.sh
+
+.PHONY: ghcr-composite
+ghcr-composite: ## Start using composite GHCR container (all-in-one)
+	@echo "$(YELLOW)🐳 Starting composite GHCR container...$(NC)"
+	./scripts/deploy/ghcr-fallback.sh --composite
 
 .PHONY: ghcr-down
 ghcr-down: ## Stop GHCR container environment
 	@echo "$(YELLOW)⏹️  Stopping GHCR environment...$(NC)"
-	docker-compose -f $(COMPOSE_FILE) -f $(GHCR_COMPOSE_FILE) down
+	docker-compose -f $(COMPOSE_FILE) -f $(GHCR_COMPOSE_FILE) down --volumes --remove-orphans 2>/dev/null || true
+	docker-compose -f $(COMPOSE_FILE) -f $(GHCR_COMPOSE_FILE) --profile all-in-one down --volumes --remove-orphans 2>/dev/null || true
 	@echo "$(GREEN)✅ GHCR environment stopped$(NC)"
 
 # ===================================================================
@@ -355,3 +361,79 @@ show-auth-endpoints:
 
 .SECONDARY:
 .SUFFIXES:
+# ===================================================================
+# 🏭 Production Deployment
+# ===================================================================
+
+.PHONY: prod-deploy
+prod-deploy: ## Deploy to production environment
+	@echo "$(YELLOW)🏭 Deploying to production...$(NC)"
+	./scripts/deploy/production-deploy.sh deploy
+
+.PHONY: prod-status
+prod-status: ## Check production deployment status
+	@echo "$(YELLOW)📊 Checking production status...$(NC)"
+	./scripts/deploy/production-deploy.sh status
+
+.PHONY: prod-logs
+prod-logs: ## Show production logs
+	@echo "$(YELLOW)📋 Showing production logs...$(NC)"
+	./scripts/deploy/production-deploy.sh logs
+
+.PHONY: prod-backup
+prod-backup: ## Create production backup
+	@echo "$(YELLOW)💾 Creating production backup...$(NC)"
+	./scripts/deploy/production-deploy.sh backup
+
+.PHONY: prod-update
+prod-update: ## Update production deployment
+	@echo "$(YELLOW)🔄 Updating production deployment...$(NC)"
+	./scripts/deploy/production-deploy.sh update
+
+.PHONY: prod-stop
+prod-stop: ## Stop production services
+	@echo "$(YELLOW)🛑 Stopping production services...$(NC)"
+	./scripts/deploy/production-deploy.sh stop
+
+# ===================================================================
+# 🛡️ Security & Quality Assurance
+# ===================================================================
+
+.PHONY: security-scan
+security-scan: ## Run comprehensive security scans
+	@echo "$(YELLOW)🛡️ Running security scans...$(NC)"
+	@echo "🔍 Python Security Scan..."
+	@if command -v safety >/dev/null 2>&1; then \
+		safety check --requirement requirements.txt || true; \
+		safety check --requirement auth/requirements.txt || true; \
+	else \
+		echo "$(YELLOW)⚠️  Install 'safety' for dependency vulnerability scanning$(NC)"; \
+	fi
+	@echo "🔍 Code Security Analysis..."
+	@if command -v bandit >/dev/null 2>&1; then \
+		bandit -r . -ll || true; \
+	else \
+		echo "$(YELLOW)⚠️  Install 'bandit' for code security analysis$(NC)"; \
+	fi
+
+.PHONY: lint-security
+lint-security: ## Security-focused linting
+	@echo "$(YELLOW)🔐 Security linting...$(NC)"
+	@if command -v semgrep >/dev/null 2>&1; then \
+		semgrep --config=p/security-audit . || true; \
+	else \
+		echo "$(YELLOW)⚠️  Install 'semgrep' for advanced security scanning$(NC)"; \
+	fi
+
+.PHONY: performance-test
+performance-test: ## Run performance tests
+	@echo "$(YELLOW)⚡ Running performance tests...$(NC)"
+	@echo "🚀 Starting test environment..."
+	@make ghcr-composite > /dev/null 2>&1 || echo "Starting services..."
+	@sleep 30
+	@echo "📊 Running load tests..."
+	@for i in {1..10}; do \
+		echo "Test $$i: $$(curl -w '%{time_total}s' -s -o /dev/null http://localhost:8005/health 2>/dev/null || echo 'failed')"; \
+	done
+	@echo "✅ Performance test completed"
+EOF < /dev/null
