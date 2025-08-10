@@ -1,299 +1,168 @@
 # 🔐 GitHub Actions Secrets Configuration
 
-This document outlines the required GitHub Actions secrets for the vLLM Local Swarm CI/CD pipeline with enterprise authentication.
+This document provides step-by-step instructions for configuring GitHub Actions secrets required for the vLLM Local Swarm CI/CD pipeline.
 
 ## 📋 Required Secrets
 
-### Core Authentication Secrets
+### 🔑 Authentication & Security
+| Secret Name | Purpose | Example/Format | Required |
+|-------------|---------|----------------|----------|
+| `JWT_SECRET_KEY` | JWT token signing key | `your-super-secret-jwt-key-32-chars-min` | ✅ **YES** |
+| `LANGFUSE_DB_PASSWORD` | PostgreSQL database password | `secure-db-password-123` | ✅ **YES** |
+| `LANGFUSE_SECRET` | Langfuse application secret | `langfuse-app-secret-key` | ✅ **YES** |
 
-| Secret Name | Description | Required For | Example/Format |
-|-------------|-------------|--------------|----------------|
-| `JWT_SECRET_KEY` | JWT token signing key (min 32 chars) | All workflows | `your-super-secure-jwt-signing-key-32chars` |
-| `LANGFUSE_DB_PASSWORD` | PostgreSQL database password | CI/CD, Deployment | `SecureDbPassword123!` |
-| `LANGFUSE_SECRET` | Langfuse application secret | CI/CD, Deployment | `langfuse-secret-key` |
+### 🐳 Container Registry
+| Secret Name | Purpose | Example/Format | Required |
+|-------------|---------|----------------|----------|
+| `GITHUB_TOKEN` | GitHub Container Registry access | *Auto-provided by GitHub* | ✅ **YES** |
 
-### Docker Registry Secrets
+### ☁️ Deployment (Optional)
+| Secret Name | Purpose | Example/Format | Required |
+|-------------|---------|----------------|----------|
+| `STAGING_KUBECONFIG` | Kubernetes config for staging | `apiVersion: v1...` | 🔄 **OPTIONAL** |
+| `PRODUCTION_KUBECONFIG` | Kubernetes config for production | `apiVersion: v1...` | 🔄 **OPTIONAL** |
+| `SLACK_WEBHOOK_URL` | Slack notifications | `https://hooks.slack.com/...` | 🔄 **OPTIONAL** |
 
-| Secret Name | Description | Required For | Example/Format |
-|-------------|-------------|--------------|----------------|
-| `DOCKER_REGISTRY` | Docker registry URL | Docker build/push | `ghcr.io` |
-| `DOCKER_REGISTRY_USERNAME` | Registry username | Docker build/push | `your-github-username` |
-| `DOCKER_REGISTRY_PASSWORD` | Registry password/token | Docker build/push | `ghp_xxxxxxxxxxxxx` |
+## 🛠️ Setup Instructions
 
-### Deployment Secrets
+### Step 1: Generate JWT Secret Key
 
-| Secret Name | Description | Required For | Example/Format |
-|-------------|-------------|--------------|----------------|
-| `KUBECONFIG` | Kubernetes cluster config | Deployment | `apiVersion: v1...` (base64) |
-| `HELM_REGISTRY_USERNAME` | Helm registry username | Helm deployment | `your-username` |
-| `HELM_REGISTRY_PASSWORD` | Helm registry password | Helm deployment | `your-password` |
-
-### Optional Security & Monitoring Secrets
-
-| Secret Name | Description | Required For | Example/Format |
-|-------------|-------------|--------------|----------------|
-| `SLACK_WEBHOOK_URL` | Slack notification webhook | Notifications | `https://hooks.slack.com/...` |
-| `SECURITY_EMAIL` | Email for security alerts | Security scanning | `security@yourcompany.com` |
-| `SONARCLOUD_TOKEN` | SonarCloud analysis token | Code quality | `sqp_xxxxxxxxxxxxx` |
-
-## 🔧 Setting Up Secrets
-
-### 1. Navigate to Repository Settings
-
-```
-https://github.com/YOUR_USERNAME/vllm-local-swarm/settings/secrets/actions
-```
-
-### 2. Add Repository Secrets
-
-Click "New repository secret" and add each required secret:
-
-#### JWT Secret Key Generation
 ```bash
-# Generate a secure JWT secret (32+ characters)
+# Generate a secure 32-character JWT secret
 openssl rand -base64 32
-
-# Or use Python
+# OR using Python
 python -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
-#### Database Password Generation
+### Step 2: Generate Database Passwords
+
 ```bash
-# Generate a secure database password
-openssl rand -base64 16 | tr -d "=+/" | cut -c1-16
+# Generate secure database password
+openssl rand -base64 24
 ```
 
-### 3. Docker Registry Setup (GitHub Container Registry)
+### Step 3: Add Secrets to GitHub Repository
 
-1. Go to GitHub Settings > Developer settings > Personal access tokens
-2. Create token with `write:packages` permission
-3. Use your GitHub username as `DOCKER_REGISTRY_USERNAME`
-4. Use the token as `DOCKER_REGISTRY_PASSWORD`
+1. Navigate to your repository on GitHub
+2. Click **Settings** → **Secrets and variables** → **Actions**
+3. Click **New repository secret**
+4. Add each required secret:
 
-## 🌍 Environment-Specific Secrets
+#### JWT_SECRET_KEY
+- **Name**: `JWT_SECRET_KEY`
+- **Value**: Output from Step 1 (minimum 32 characters)
+- **Example**: `dGhpc19pc19hX3NlY3VyZV9qd3Rfc2VjcmV0X2tleV8zMmNoYXJz`
 
-### Staging Environment
+#### LANGFUSE_DB_PASSWORD  
+- **Name**: `LANGFUSE_DB_PASSWORD`
+- **Value**: Output from Step 2
+- **Example**: `SecureDBPassword123!`
 
-Create additional secrets for staging deployment:
+#### LANGFUSE_SECRET
+- **Name**: `LANGFUSE_SECRET`
+- **Value**: Another secure random string
+- **Example**: `langfuse-application-secret-key-secure-random`
 
-| Secret Name | Description | Value |
-|-------------|-------------|-------|
-| `STAGING_JWT_SECRET_KEY` | Staging JWT secret | Different from production |
-| `STAGING_DB_PASSWORD` | Staging database password | `StagingDb123!` |
-| `STAGING_KUBECONFIG` | Staging cluster config | Base64 encoded kubeconfig |
-| `STAGING_ADMIN_PASSWORD` | Default admin password | `Admin123!Staging` |
+### Step 4: Verify GitHub Token Permissions
 
-### Production Environment
+The `GITHUB_TOKEN` is automatically provided by GitHub Actions. Ensure your repository has these permissions:
 
-Create production-specific secrets:
+1. Go to **Settings** → **Actions** → **General**
+2. Under "Workflow permissions":
+   - Select **Read and write permissions**
+   - Check **Allow GitHub Actions to create and approve pull requests**
 
-| Secret Name | Description | Value |
-|-------------|-------------|-------|
-| `PRODUCTION_JWT_SECRET_KEY` | Production JWT secret | High entropy, rotated regularly |
-| `PRODUCTION_DB_PASSWORD` | Production database password | Complex, unique password |
-| `PRODUCTION_KUBECONFIG` | Production cluster config | Base64 encoded kubeconfig |
-| `PRODUCTION_ADMIN_EMAIL` | Production admin email | `admin@yourcompany.com` |
+## 🧪 Testing Secrets Configuration
 
-## 🔄 Secret Rotation Schedule
+After adding secrets, test the CI/CD pipeline:
 
-### High Priority (Monthly)
-- `JWT_SECRET_KEY` / `PRODUCTION_JWT_SECRET_KEY`
-- `DOCKER_REGISTRY_PASSWORD`
-- `KUBECONFIG` (if cluster certificates expire)
-
-### Medium Priority (Quarterly)
-- `LANGFUSE_DB_PASSWORD`
-- `LANGFUSE_SECRET`
-- Admin passwords
-
-### Low Priority (Annually)
-- `STAGING_*` secrets
-- Monitoring/notification tokens
-
-## 📝 Secret Validation Commands
-
-### Test JWT Secret
 ```bash
-# Validate JWT secret length
-export JWT_SECRET_KEY="your-secret-here"
-if [ ${#JWT_SECRET_KEY} -ge 32 ]; then 
-  echo "✅ JWT secret is valid length"; 
-else 
-  echo "❌ JWT secret too short"; 
-fi
+# Push a commit to trigger the pipeline
+git commit --allow-empty -m "test: Trigger CI/CD with new secrets"
+git push
 ```
 
-### Test Docker Registry Access
-```bash
-# Test Docker registry login
-echo $DOCKER_REGISTRY_PASSWORD | docker login ghcr.io -u $DOCKER_REGISTRY_USERNAME --password-stdin
-```
+Monitor the pipeline at: `https://github.com/YOUR_USERNAME/vllm-local-swarm/actions`
 
-### Test Database Connection
-```bash
-# Test PostgreSQL connection
-psql "postgresql://vllm_user:$LANGFUSE_DB_PASSWORD@localhost:5432/vllm_auth" -c "SELECT 1;"
+## 🔍 Validation Commands
+
+To validate secrets are working in CI/CD:
+
+```yaml
+# Example step to test secret availability (DO NOT expose actual values)
+- name: Validate secrets
+  run: |
+    echo "JWT_SECRET_KEY length: ${#JWT_SECRET_KEY}"
+    echo "LANGFUSE_DB_PASSWORD configured: $([ -n "$LANGFUSE_DB_PASSWORD" ] && echo "✅" || echo "❌")"
+    echo "LANGFUSE_SECRET configured: $([ -n "$LANGFUSE_SECRET" ] && echo "✅" || echo "❌")"
+  env:
+    JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
+    LANGFUSE_DB_PASSWORD: ${{ secrets.LANGFUSE_DB_PASSWORD }}
+    LANGFUSE_SECRET: ${{ secrets.LANGFUSE_SECRET }}
 ```
 
 ## 🚨 Security Best Practices
 
-### 1. Secret Management
-- ✅ Use minimum required permissions
-- ✅ Rotate secrets regularly
-- ✅ Use different secrets for different environments
-- ✅ Never commit secrets to git (use `.env.example` with placeholders)
-- ❌ Don't share secrets via email/chat
-- ❌ Don't use production secrets in development
+### ✅ DO
+- Use minimum 32-character secrets for JWT keys
+- Generate cryptographically secure random strings
+- Rotate secrets periodically (every 90 days)
+- Use different secrets for staging and production
+- Store secrets in GitHub repository settings only
 
-### 2. Access Control
-- ✅ Limit repository access to necessary team members
-- ✅ Use branch protection rules
-- ✅ Require code review for workflow changes
-- ✅ Enable secret scanning on repository
+### ❌ DON'T
+- Hardcode secrets in code or configuration files
+- Share secrets via chat, email, or unsecured channels
+- Use weak or predictable passwords
+- Log or expose secret values in CI/CD output
+- Commit secrets to version control (even temporarily)
 
-### 3. Monitoring
-- ✅ Monitor secret usage in workflow logs
-- ✅ Set up alerts for failed authentication
-- ✅ Audit secret access regularly
-- ✅ Review and rotate unused secrets
+## 🔧 Environment-Specific Configuration
 
-## 🔍 Troubleshooting Secrets
+### Staging Environment
+For staging deployments, use less complex but still secure secrets:
 
-### Common Issues
-
-#### "Invalid JWT Secret" Error
 ```bash
-# Check secret exists and has correct name
-gh secret list
-
-# Check secret length (should be 32+ chars)
-echo "Your secret here" | wc -c
+# Staging JWT Secret (still 32+ chars but can be simpler)
+JWT_SECRET_KEY_STAGING="staging-jwt-secret-key-32-chars-minimum"
 ```
 
-#### Docker Push Permission Denied
+### Production Environment
+For production, use maximum security:
+
 ```bash
-# Verify registry URL
-echo $DOCKER_REGISTRY  # Should be ghcr.io
-
-# Check token permissions
-curl -H "Authorization: token $DOCKER_REGISTRY_PASSWORD" \
-  https://api.github.com/user/packages?package_type=container
+# Production JWT Secret (complex, random)
+JWT_SECRET_KEY_PRODUCTION="$(openssl rand -base64 48)"
 ```
 
-#### Kubernetes Connection Failed
-```bash
-# Test kubeconfig
-kubectl --kubeconfig=<(echo $KUBECONFIG | base64 -d) get nodes
+## 🐛 Troubleshooting
 
-# Verify cluster access
-kubectl --kubeconfig=<(echo $KUBECONFIG | base64 -d) auth can-i create pods
-```
+### Issue: Pipeline fails with "Secret not found"
+**Solution**: Verify secret names match exactly (case-sensitive)
 
-### Debug Mode
+### Issue: JWT tokens invalid
+**Solution**: Ensure JWT_SECRET_KEY is minimum 32 characters
 
-Enable debug logging in workflows by adding:
-```yaml
-env:
-  ACTIONS_STEP_DEBUG: true
-  ACTIONS_RUNNER_DEBUG: true
-```
+### Issue: Database connection fails
+**Solution**: Check LANGFUSE_DB_PASSWORD matches your PostgreSQL configuration
 
-## 🔄 Secret Rotation Procedure
+### Issue: Container registry push fails
+**Solution**: Verify workflow permissions include "write" access to packages
 
-### 1. Generate New Secret
-```bash
-# Generate new JWT secret
-NEW_JWT_SECRET=$(openssl rand -base64 32)
-echo "New JWT Secret: $NEW_JWT_SECRET"
-```
+## 📚 Related Documentation
 
-### 2. Update GitHub Secret
-- Go to repository settings
-- Edit the secret
-- Paste new value
-- Save
+- [GitHub Actions Secrets Documentation](https://docs.github.com/en/actions/security-guides/encrypted-secrets)
+- [JWT Secret Key Best Practices](https://auth0.com/blog/a-look-at-the-latest-draft-for-jwt-bcp/)
+- [PostgreSQL Security](https://www.postgresql.org/docs/current/auth-pg-hba-conf.html)
 
-### 3. Update Deployed Applications
-```bash
-# Update Kubernetes secret
-kubectl create secret generic vllm-auth-secrets \
-  --namespace=vllm-swarm \
-  --from-literal=jwt-secret-key="$NEW_JWT_SECRET" \
-  --dry-run=client -o yaml | kubectl apply -f -
+## 🆘 Support
 
-# Restart services to pick up new secret
-kubectl rollout restart deployment/auth-service -n vllm-swarm
-```
-
-### 4. Verify Rotation
-```bash
-# Test authentication with new secret
-curl -X POST http://localhost:8005/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"your-admin-password"}'
-```
-
-## 📊 Secret Usage Monitoring
-
-### GitHub Actions Usage
-```yaml
-# In workflow file - log secret usage (don't expose values)
-- name: Verify secrets
-  run: |
-    echo "JWT_SECRET_KEY length: ${#JWT_SECRET_KEY}"
-    echo "Docker registry: $DOCKER_REGISTRY"
-    echo "Kubeconfig size: $(echo $KUBECONFIG | base64 -d | wc -c)"
-```
-
-### Audit Script
-```bash
-#!/bin/bash
-# audit-secrets.sh - Check secret freshness
-
-echo "🔍 Secret Audit Report - $(date)"
-echo
-
-# Check JWT secret age (implement based on your tracking method)
-echo "📊 Secret Status:"
-echo "- JWT Secret: Last rotated $(date -d '30 days ago' '+%Y-%m-%d') ⚠️"
-echo "- DB Password: Last rotated $(date -d '90 days ago' '+%Y-%m-%d') ✅"
-echo "- Docker Token: Last rotated $(date -d '60 days ago' '+%Y-%m-%d') ✅"
-
-echo
-echo "🔄 Rotation Recommendations:"
-echo "- Rotate JWT secret immediately (overdue)"
-echo "- DB password rotation due in 60 days"
-echo "- All other secrets current"
-```
-
-## 📞 Support & Emergency Contacts
-
-### Secret Compromise Response
-1. **Immediately** revoke compromised secret in GitHub
-2. **Rotate** secret in all environments
-3. **Audit** recent activity for unauthorized usage
-4. **Notify** security team: security@yourcompany.com
-
-### Emergency Secret Reset
-```bash
-# Emergency JWT secret reset
-EMERGENCY_JWT_SECRET=$(openssl rand -base64 32)
-
-# Update all environments
-kubectl create secret generic emergency-auth-secrets \
-  --from-literal=jwt-secret-key="$EMERGENCY_JWT_SECRET" \
-  --dry-run=client -o yaml | kubectl apply -f -
-```
+If you encounter issues:
+1. Check the [troubleshooting section](#-troubleshooting) above
+2. Review CI/CD pipeline logs for specific error messages
+3. Ensure all required secrets are properly configured
+4. Verify secret values don't contain special characters that need escaping
 
 ---
 
-## 📚 Additional Resources
-
-- [GitHub Actions Encrypted Secrets](https://docs.github.com/en/actions/security-guides/encrypted-secrets)
-- [Kubernetes Secret Management](https://kubernetes.io/docs/concepts/configuration/secret/)
-- [Docker Registry Authentication](https://docs.docker.com/registry/spec/auth/)
-- [JWT Best Practices](https://tools.ietf.org/html/rfc8725)
-
----
-
-**🔐 Remember**: Secrets are the keys to your kingdom. Protect them accordingly!
+✅ **After completing this setup, your CI/CD pipeline will have full access to required secrets for authentication, database connections, and container registry operations.**

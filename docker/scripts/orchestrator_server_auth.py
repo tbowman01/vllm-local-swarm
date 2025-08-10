@@ -20,10 +20,10 @@ import httpx
 
 # Add paths
 sys.path.insert(0, "/app/src")
-sys.path.insert(0, "/app/auth")
+sys.path.insert(0, "/app")
 
 # Import authentication middleware
-from middleware import AuthenticationMiddleware, AuthConfig, require_auth, get_current_user
+from auth.middleware import AuthenticationMiddleware, AuthConfig, require_auth, get_current_user
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

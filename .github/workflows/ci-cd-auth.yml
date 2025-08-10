@@ -29,11 +29,63 @@ env:
 
 jobs:
   # ============================================================================
+  # SECRETS VALIDATION
+  # ============================================================================
+  validate-secrets:
+    name: 🔐 Validate Secrets
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Validate required secrets
+      run: |
+        echo "🔍 Validating GitHub Actions secrets..."
+        
+        # Check JWT_SECRET_KEY
+        if [ -z "$JWT_SECRET_KEY" ]; then
+          echo "❌ JWT_SECRET_KEY is not configured"
+          exit 1
+        elif [ ${#JWT_SECRET_KEY} -lt 32 ]; then
+          echo "❌ JWT_SECRET_KEY is too short (minimum 32 characters required)"
+          exit 1
+        else
+          echo "✅ JWT_SECRET_KEY configured (${#JWT_SECRET_KEY} characters)"
+        fi
+        
+        # Check LANGFUSE_DB_PASSWORD
+        if [ -z "$LANGFUSE_DB_PASSWORD" ]; then
+          echo "❌ LANGFUSE_DB_PASSWORD is not configured"
+          exit 1
+        elif [ ${#LANGFUSE_DB_PASSWORD} -lt 12 ]; then
+          echo "❌ LANGFUSE_DB_PASSWORD is too short (minimum 12 characters recommended)"
+          exit 1
+        else
+          echo "✅ LANGFUSE_DB_PASSWORD configured (${#LANGFUSE_DB_PASSWORD} characters)"
+        fi
+        
+        # Check LANGFUSE_SECRET
+        if [ -z "$LANGFUSE_SECRET" ]; then
+          echo "❌ LANGFUSE_SECRET is not configured"
+          exit 1
+        elif [ ${#LANGFUSE_SECRET} -lt 16 ]; then
+          echo "❌ LANGFUSE_SECRET is too short (minimum 16 characters recommended)"
+          exit 1
+        else
+          echo "✅ LANGFUSE_SECRET configured (${#LANGFUSE_SECRET} characters)"
+        fi
+        
+        echo "🎉 All required secrets validated successfully!"
+      env:
+        JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
+        LANGFUSE_DB_PASSWORD: ${{ secrets.LANGFUSE_DB_PASSWORD }}
+        LANGFUSE_SECRET: ${{ secrets.LANGFUSE_SECRET }}
+
+  # ============================================================================
   # SECURITY & CODE QUALITY
   # ============================================================================
   security-scan:
     name: 🛡️ Security Scanning
     runs-on: ubuntu-latest
+    needs: [validate-secrets]
     permissions:
       contents: read
       security-events: write
@@ -98,6 +150,7 @@ jobs:
   auth-tests:
     name: 🔐 Authentication Tests
     runs-on: ubuntu-latest
+    needs: [validate-secrets]
     
     services:
       redis:
@@ -142,9 +195,15 @@ jobs:
     - name: Set up test environment
       run: |
         cp .env.example .env || true
-        echo "JWT_SECRET_KEY=test-secret-key-for-ci-cd-pipeline" >> .env
+        echo "JWT_SECRET_KEY=$JWT_SECRET_KEY" >> .env
         echo "DATABASE_URL=postgresql://test_user:test_password@localhost:5432/vllm_auth_test" >> .env
         echo "REDIS_URL=redis://localhost:6379" >> .env
+        echo "LANGFUSE_DB_PASSWORD=$LANGFUSE_DB_PASSWORD" >> .env
+        echo "LANGFUSE_SECRET=$LANGFUSE_SECRET" >> .env
+      env:
+        JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
+        LANGFUSE_DB_PASSWORD: ${{ secrets.LANGFUSE_DB_PASSWORD }}
+        LANGFUSE_SECRET: ${{ secrets.LANGFUSE_SECRET }}
 
     - name: Run authentication unit tests
       run: |
