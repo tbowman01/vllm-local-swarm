@@ -132,6 +132,4 @@ networks:
   vllm-network:
     external: true
 
-volumes:
-  # Note: redis_data, langfuse_db_data, and qdrant_data are defined in main docker-compose.yml
-  # These volumes are shared between the main and auth services
+volumes: {}
