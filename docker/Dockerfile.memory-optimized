@@ -2,7 +2,7 @@
 # syntax=docker/dockerfile:1.4
 
 # Build stage
-FROM vllm-swarm/base-ml:latest AS builder
+FROM ghcr.io/tbowman01/vllm-local-swarm/base-ml:latest AS builder
 
 WORKDIR /app
 
@@ -15,7 +15,7 @@ RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
     -r requirements.memory.txt
 
 # Runtime stage
-FROM vllm-swarm/base-ml:latest AS runtime
+FROM ghcr.io/tbowman01/vllm-local-swarm/base-ml:latest AS runtime
 
 WORKDIR /app
 

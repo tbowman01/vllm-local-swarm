@@ -111,12 +111,7 @@ jobs:
       if: steps.check_dockerfile.outputs.exists == 'true'
       uses: docker/setup-buildx-action@v3
 
-    - name: 🏗️ Pull base-python dependency
-      if: steps.check_dockerfile.outputs.exists == 'true'
-      run: |
-        # Pull the published base-python image
-        docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/base-python:latest
-        docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/base-python:latest vllm-swarm/base-python:latest
+    # Base-python image is pulled automatically by Docker when referenced in FROM statement
 
     - name: 🏷️ Extract metadata
       id: meta
@@ -279,17 +274,7 @@ jobs:
       if: steps.check_dockerfile.outputs.exists == 'true'
       uses: docker/setup-buildx-action@v3
 
-    - name: 🏗️ Pull base images
-      if: steps.check_dockerfile.outputs.exists == 'true'
-      run: |
-        # Pull the published base images
-        docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/base-python:latest
-        docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/base-python:latest vllm-swarm/base-python:latest
-        
-        if [ "${{ matrix.service.base_image }}" = "base-ml" ]; then
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/base-ml:latest
-          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/base-ml:latest vllm-swarm/base-ml:latest
-        fi
+    # Base images are pulled automatically by Docker when referenced in FROM statements
 
     - name: 🏷️ Extract metadata
       id: meta

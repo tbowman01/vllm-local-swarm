@@ -3,7 +3,7 @@
 # syntax=docker/dockerfile:1.4
 
 ARG PYTHON_VERSION=3.11
-FROM vllm-swarm/base-python:latest AS ml-base
+FROM ghcr.io/tbowman01/vllm-local-swarm/base-python:latest AS ml-base
 
 # ML-specific environment variables
 ENV TORCH_HOME=/app/.cache/torch \
