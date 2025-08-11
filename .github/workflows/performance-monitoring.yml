@@ -54,7 +54,7 @@ jobs:
       run: |
         echo "🚀 Starting minimal test environment..."
         # Start only essential services for performance testing
-        docker-compose up -d redis qdrant langfuse-db
+        docker compose up -d redis qdrant langfuse-db
         
         # Wait for services to be ready
         sleep 30
@@ -208,7 +208,7 @@ jobs:
         echo "🧹 Cleaning up test environment..."
         docker stop vllm-perf-test || true
         docker rm vllm-perf-test || true
-        docker-compose down --volumes --remove-orphans || true
+        docker compose down --volumes --remove-orphans || true
 
   load-test-advanced:
     runs-on: ubuntu-latest
@@ -264,7 +264,7 @@ jobs:
 
     - name: 🚀 Start services for load testing
       run: |
-        docker-compose up -d redis qdrant langfuse-db
+        docker compose up -d redis qdrant langfuse-db
         docker build -f Dockerfile.composite -t vllm-swarm:load-test .
         docker run -d --name vllm-load-test \
           --network vllm-local-swarm_vllm-network \
@@ -305,4 +305,4 @@ jobs:
       run: |
         docker stop vllm-load-test || true
         docker rm vllm-load-test || true
-        docker-compose down --volumes --remove-orphans || true
+        docker compose down --volumes --remove-orphans || true

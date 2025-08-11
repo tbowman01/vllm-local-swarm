@@ -15,6 +15,7 @@ jobs:
   # Build base-python first
   build-base-python:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
@@ -72,7 +73,7 @@ jobs:
         labels: ${{ steps.meta.outputs.labels }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
-        platforms: linux/amd64,linux/arm64
+        platforms: linux/amd64
         build-args: |
           BUILDKIT_INLINE_CACHE=1
 
@@ -80,6 +81,7 @@ jobs:
   build-base-ml:
     needs: build-base-python
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       contents: read
       packages: write
@@ -139,13 +141,14 @@ jobs:
         labels: ${{ steps.meta.outputs.labels }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
-        platforms: linux/amd64,linux/arm64
+        platforms: linux/amd64
         build-args: |
           BUILDKIT_INLINE_CACHE=1
 
   # Build standard services (no dependencies)
   build-standard-services:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     permissions:
       contents: read
       packages: write
@@ -216,7 +219,7 @@ jobs:
         labels: ${{ steps.meta.outputs.labels }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
-        platforms: linux/amd64,linux/arm64
+        platforms: linux/amd64
         build-args: |
           BUILDKIT_INLINE_CACHE=1
 
@@ -224,6 +227,7 @@ jobs:
   build-optimized-services:
     needs: [build-base-python, build-base-ml]
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     permissions:
       contents: read
       packages: write
@@ -303,12 +307,13 @@ jobs:
         labels: ${{ steps.meta.outputs.labels }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
-        platforms: linux/amd64,linux/arm64
+        platforms: linux/amd64
         build-args: |
           BUILDKIT_INLINE_CACHE=1
 
   build-composite:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
       packages: write
@@ -351,10 +356,11 @@ jobs:
         labels: ${{ steps.meta.outputs.labels }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
-        platforms: linux/amd64,linux/arm64
+        platforms: linux/amd64
 
   security-scan:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: [build-standard-services, build-optimized-services, build-composite]
     permissions:
       contents: read
@@ -398,6 +404,7 @@ jobs:
 
   publish-summary:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     needs: [build-standard-services, build-optimized-services, build-composite]
     if: always()
     
