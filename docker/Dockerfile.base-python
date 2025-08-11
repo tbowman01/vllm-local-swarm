@@ -1,0 +1,67 @@
+# 🐳 Base Python Image with Common Dependencies
+# This base image is shared across all Python services for better caching
+# syntax=docker/dockerfile:1.4
+
+ARG PYTHON_VERSION=3.11
+FROM python:${PYTHON_VERSION}-slim AS python-base
+
+# Enable BuildKit cache mounts
+ENV DOCKER_BUILDKIT=1
+
+# Set up environment
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_DEFAULT_TIMEOUT=100 \
+    POETRY_VERSION=1.7.1 \
+    POETRY_HOME="/opt/poetry" \
+    POETRY_VIRTUALENVS_IN_PROJECT=true \
+    POETRY_NO_INTERACTION=1 \
+    PYSETUP_PATH="/opt/pysetup" \
+    VENV_PATH="/opt/pysetup/.venv"
+
+# Add poetry and venv to PATH
+ENV PATH="$POETRY_HOME/bin:$VENV_PATH/bin:$PATH"
+
+# Install system dependencies with cache mount
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    build-essential \
+    libpq-dev \
+    curl \
+    wget \
+    git \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Poetry for dependency management
+RUN --mount=type=cache,target=/root/.cache \
+    curl -sSL https://install.python-poetry.org | python3 -
+
+# Create non-root user for security
+RUN groupadd -r appuser && useradd -r -g appuser -u 1000 appuser
+
+# Set working directory
+WORKDIR /app
+
+# Pre-install common Python packages with cache mount
+RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
+    pip install --upgrade pip setuptools wheel && \
+    pip install \
+    fastapi==0.115.5 \
+    uvicorn[standard]==0.34.0 \
+    pydantic==2.11.0 \
+    redis==5.2.1 \
+    httpx==0.28.1 \
+    python-multipart==0.0.20 \
+    python-dotenv==1.0.1 \
+    aiofiles==24.1.0
+
+# Label for cache management
+LABEL maintainer="vllm-swarm" \
+      version="1.0.0" \
+      description="Base Python image with common dependencies"

@@ -112,10 +112,11 @@ services:
       ENCRYPTION_KEY: ${LANGFUSE_ENCRYPTION_KEY:-your-encryption-key}
       LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: true
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/public/health"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/public/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 60s
     networks:
       - vllm-network
 

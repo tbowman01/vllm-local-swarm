@@ -1,0 +1,7 @@
+# Requirements for monitoring components
+fastapi==0.115.5
+uvicorn[standard]==0.34.0
+prometheus-client==0.21.1
+httpx==0.28.1
+psutil==6.1.1
+pynvml==11.5.3

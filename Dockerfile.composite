@@ -31,6 +31,9 @@ COPY auth/ /app/auth/
 COPY coordination/ /app/coordination/
 COPY docker/scripts/ /app/docker/scripts/
 
+# Make healthcheck script executable
+RUN chmod +x /app/docker/scripts/healthcheck-composite.sh
+
 # Create runtime user for security
 RUN useradd -m -u 1000 vllm-user && \
     chown -R vllm-user:vllm-user /app
@@ -83,9 +86,7 @@ RUN chmod +x /app/start.sh
 
 # Health check for all services
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8005/health && \
-        curl -f http://localhost:8004/health && \
-        curl -f http://localhost:8003/health || exit 1
+    CMD ["/app/docker/scripts/healthcheck-composite.sh"]
 
 # Expose all service ports
 EXPOSE 8003 8004 8005

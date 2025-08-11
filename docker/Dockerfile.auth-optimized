@@ -1,0 +1,42 @@
+# 🔐 Optimized Authentication Service
+# syntax=docker/dockerfile:1.4
+
+# Build stage for dependencies
+FROM vllm-swarm/base-python:latest AS builder
+
+WORKDIR /app
+
+# Copy only requirements first for better caching
+COPY auth/requirements.txt /app/auth/requirements.txt
+
+# Install auth-specific dependencies with cache mount
+RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
+    pip install --user --no-warn-script-location \
+    -r /app/auth/requirements.txt
+
+# Runtime stage
+FROM vllm-swarm/base-python:latest AS runtime
+
+WORKDIR /app
+
+# Copy installed packages from builder
+COPY --from=builder --chown=appuser:appuser /root/.local /home/appuser/.local
+
+# Copy application code (this layer changes most frequently)
+COPY --chown=appuser:appuser auth/ /app/auth/
+
+# Switch to non-root user
+USER appuser
+
+# Update PATH for user-installed packages
+ENV PATH=/home/appuser/.local/bin:$PATH \
+    PYTHONPATH=/app:$PYTHONPATH \
+    AUTH_PORT=8005
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD python -c "import httpx; httpx.get('http://localhost:8005/health').raise_for_status()"
+
+EXPOSE 8005
+
+CMD ["python", "-m", "uvicorn", "auth.auth_service:app", "--host", "0.0.0.0", "--port", "8005"]

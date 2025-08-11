@@ -1,0 +1,237 @@
+# 🚀 Optimized Build Targets for vLLM Local Swarm
+# Include this file in the main Makefile for optimized builds
+
+# ===================================================================
+# BuildKit Configuration
+# ===================================================================
+
+# Enable BuildKit by default
+export DOCKER_BUILDKIT := 1
+export COMPOSE_DOCKER_CLI_BUILD := 1
+export BUILDKIT_PROGRESS := auto
+
+# Cache configuration
+CACHE_DIR := /tmp/vllm-buildkit-cache
+CACHE_REGISTRY := vllm-swarm/cache
+BUILDER_NAME := vllm-builder
+
+# ===================================================================
+# Optimized Build Targets
+# ===================================================================
+
+.PHONY: build-optimized
+build-optimized: ## Build all services with optimization
+	@echo "$(BLUE)🚀 Building with optimization...$(NC)"
+	@chmod +x scripts/optimized-build.sh
+	@./scripts/optimized-build.sh
+
+.PHONY: build-optimized-parallel
+build-optimized-parallel: ## Build services in parallel
+	@echo "$(BLUE)⚡ Parallel optimized build...$(NC)"
+	@chmod +x scripts/optimized-build.sh
+	@./scripts/optimized-build.sh --parallel
+
+.PHONY: build-base
+build-base: ## Build base images only
+	@echo "$(YELLOW)📦 Building base images...$(NC)"
+	@docker buildx build \
+		--file docker/Dockerfile.base-python \
+		--tag vllm-swarm/base-python:latest \
+		--cache-from type=local,src=$(CACHE_DIR) \
+		--cache-to type=local,dest=$(CACHE_DIR),mode=max \
+		--load .
+	@docker buildx build \
+		--file docker/Dockerfile.base-ml \
+		--tag vllm-swarm/base-ml:latest \
+		--cache-from type=local,src=$(CACHE_DIR) \
+		--cache-to type=local,dest=$(CACHE_DIR),mode=max \
+		--load .
+
+.PHONY: build-auth-optimized
+build-auth-optimized: build-base ## Build optimized auth service
+	@echo "$(YELLOW)🔐 Building optimized auth service...$(NC)"
+	@docker buildx build \
+		--file docker/Dockerfile.auth-optimized \
+		--tag vllm-swarm/auth:optimized \
+		--cache-from type=local,src=$(CACHE_DIR) \
+		--cache-to type=local,dest=$(CACHE_DIR),mode=max \
+		--build-arg BUILDKIT_INLINE_CACHE=1 \
+		--load .
+
+.PHONY: build-memory-optimized
+build-memory-optimized: build-base ## Build optimized memory service
+	@echo "$(YELLOW)💾 Building optimized memory service...$(NC)"
+	@docker buildx build \
+		--file docker/Dockerfile.memory-optimized \
+		--tag vllm-swarm/memory:optimized \
+		--cache-from type=local,src=$(CACHE_DIR) \
+		--cache-to type=local,dest=$(CACHE_DIR),mode=max \
+		--build-arg BUILDKIT_INLINE_CACHE=1 \
+		--load .
+
+.PHONY: build-orchestrator-optimized
+build-orchestrator-optimized: build-base ## Build optimized orchestrator
+	@echo "$(YELLOW)🎯 Building optimized orchestrator...$(NC)"
+	@docker buildx build \
+		--file docker/Dockerfile.orchestrator-optimized \
+		--tag vllm-swarm/orchestrator:optimized \
+		--cache-from type=local,src=$(CACHE_DIR) \
+		--cache-to type=local,dest=$(CACHE_DIR),mode=max \
+		--build-arg BUILDKIT_INLINE_CACHE=1 \
+		--load .
+
+# ===================================================================
+# Cache Management
+# ===================================================================
+
+.PHONY: cache-init
+cache-init: ## Initialize BuildKit cache
+	@echo "$(YELLOW)🔧 Initializing BuildKit cache...$(NC)"
+	@mkdir -p $(CACHE_DIR)
+	@if ! docker buildx ls | grep -q $(BUILDER_NAME); then \
+		docker buildx create --name $(BUILDER_NAME) \
+			--driver docker-container \
+			--config docker/buildkitd.toml \
+			--use; \
+		echo "$(GREEN)✅ BuildKit builder created$(NC)"; \
+	else \
+		docker buildx use $(BUILDER_NAME); \
+		echo "$(GREEN)✅ Using existing builder$(NC)"; \
+	fi
+
+.PHONY: cache-stats
+cache-stats: ## Show cache statistics
+	@echo "$(BLUE)📊 Cache Statistics$(NC)"
+	@echo "$(YELLOW)Local cache size:$(NC)"
+	@du -sh $(CACHE_DIR) 2>/dev/null || echo "Cache not initialized"
+	@echo ""
+	@echo "$(YELLOW)Docker build cache:$(NC)"
+	@docker buildx du --verbose 2>/dev/null || docker system df
+
+.PHONY: cache-prune
+cache-prune: ## Prune build cache
+	@echo "$(YELLOW)🧹 Pruning build cache...$(NC)"
+	@docker buildx prune --force --filter "until=168h"
+	@rm -rf $(CACHE_DIR)/*
+	@echo "$(GREEN)✅ Cache pruned$(NC)"
+
+.PHONY: cache-export
+cache-export: ## Export cache to registry
+	@echo "$(YELLOW)📤 Exporting cache to registry...$(NC)"
+	@for image in base-python base-ml auth memory orchestrator; do \
+		docker tag vllm-swarm/$$image:optimized $(CACHE_REGISTRY)/$$image:cache 2>/dev/null || true; \
+		echo "  Tagged $$image for export"; \
+	done
+	@echo "$(GREEN)✅ Cache export prepared$(NC)"
+
+# ===================================================================
+# Optimized Deployment
+# ===================================================================
+
+.PHONY: up-optimized
+up-optimized: build-optimized ## Start services with optimized images
+	@echo "$(BLUE)🚀 Starting optimized services...$(NC)"
+	@docker-compose -f docker-compose.optimized.yml up -d
+	@echo "$(GREEN)✅ Optimized services started$(NC)"
+
+.PHONY: down-optimized
+down-optimized: ## Stop optimized services
+	@echo "$(YELLOW)📦 Stopping optimized services...$(NC)"
+	@docker-compose -f docker-compose.optimized.yml down
+	@echo "$(GREEN)✅ Services stopped$(NC)"
+
+.PHONY: logs-optimized
+logs-optimized: ## Show logs for optimized services
+	@docker-compose -f docker-compose.optimized.yml logs -f
+
+.PHONY: ps-optimized
+ps-optimized: ## Show status of optimized services
+	@docker-compose -f docker-compose.optimized.yml ps
+
+# ===================================================================
+# Benchmarking
+# ===================================================================
+
+.PHONY: benchmark-builds
+benchmark-builds: ## Compare build times
+	@echo "$(BLUE)⏱️  Benchmarking build times...$(NC)"
+	@echo ""
+	@echo "$(YELLOW)Standard build:$(NC)"
+	@time $(MAKE) build-auth > /dev/null 2>&1 || true
+	@echo ""
+	@echo "$(YELLOW)Optimized build:$(NC)"
+	@time $(MAKE) build-auth-optimized > /dev/null 2>&1 || true
+	@echo ""
+	@echo "$(GREEN)✅ Benchmark complete$(NC)"
+
+.PHONY: image-sizes
+image-sizes: ## Compare image sizes
+	@echo "$(BLUE)📏 Image Size Comparison$(NC)"
+	@echo ""
+	@docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}" | grep -E "(REPOSITORY|vllm-swarm|ghcr.io/tbowman01)" || true
+
+# ===================================================================
+# Development Helpers
+# ===================================================================
+
+.PHONY: dev-optimized
+dev-optimized: cache-init build-optimized up-optimized ## Full optimized development setup
+	@echo "$(GREEN)✅ Optimized development environment ready$(NC)"
+	@echo ""
+	@echo "$(YELLOW)Services:$(NC)"
+	@$(MAKE) --no-print-directory ps-optimized
+	@echo ""
+	@echo "$(YELLOW)Access points:$(NC)"
+	@echo "  Auth Service:    http://localhost:8005"
+	@echo "  Memory API:      http://localhost:8003"
+	@echo "  Orchestrator:    http://localhost:8004"
+
+.PHONY: rebuild-optimized
+rebuild-optimized: cache-prune build-optimized ## Rebuild with fresh cache
+	@echo "$(GREEN)✅ Rebuild complete with fresh cache$(NC)"
+
+# ===================================================================
+# CI/CD Integration
+# ===================================================================
+
+.PHONY: ci-build
+ci-build: cache-init ## CI-optimized build
+	@echo "$(BLUE)🤖 CI Build Process$(NC)"
+	@export BUILDKIT_PROGRESS=plain && \
+	$(MAKE) --no-print-directory build-optimized
+
+.PHONY: ci-test
+ci-test: ci-build ## CI test with optimized images
+	@echo "$(BLUE)🧪 Running CI tests...$(NC)"
+	@docker-compose -f docker-compose.optimized.yml up -d
+	@sleep 10
+	@$(MAKE) --no-print-directory test
+	@docker-compose -f docker-compose.optimized.yml down
+
+# ===================================================================
+# Migration Helpers
+# ===================================================================
+
+.PHONY: migrate-to-optimized
+migrate-to-optimized: ## Migrate from standard to optimized builds
+	@echo "$(BLUE)🔄 Migrating to optimized builds...$(NC)"
+	@echo "$(YELLOW)1. Stopping existing services...$(NC)"
+	@docker-compose down || true
+	@echo "$(YELLOW)2. Building optimized images...$(NC)"
+	@$(MAKE) --no-print-directory build-optimized
+	@echo "$(YELLOW)3. Starting optimized services...$(NC)"
+	@$(MAKE) --no-print-directory up-optimized
+	@echo "$(GREEN)✅ Migration complete$(NC)"
+
+.PHONY: compare-performance
+compare-performance: ## Compare standard vs optimized performance
+	@echo "$(BLUE)📊 Performance Comparison$(NC)"
+	@echo ""
+	@echo "$(YELLOW)Build times:$(NC)"
+	@$(MAKE) --no-print-directory benchmark-builds
+	@echo ""
+	@echo "$(YELLOW)Image sizes:$(NC)"
+	@$(MAKE) --no-print-directory image-sizes
+	@echo ""
+	@echo "$(YELLOW)Cache usage:$(NC)"
+	@$(MAKE) --no-print-directory cache-stats

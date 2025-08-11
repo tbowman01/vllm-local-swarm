@@ -1,0 +1,67 @@
+# 🤖 Base ML Image with AI/ML Dependencies
+# Extends base-python with ML-specific packages
+# syntax=docker/dockerfile:1.4
+
+ARG PYTHON_VERSION=3.11
+FROM vllm-swarm/base-python:latest AS ml-base
+
+# ML-specific environment variables
+ENV TORCH_HOME=/app/.cache/torch \
+    TRANSFORMERS_CACHE=/app/.cache/huggingface \
+    HF_HOME=/app/.cache/huggingface \
+    NUMBA_CACHE_DIR=/app/.cache/numba
+
+# Create cache directories
+RUN mkdir -p ${TORCH_HOME} ${TRANSFORMERS_CACHE} ${NUMBA_CACHE_DIR}
+
+# Install ML dependencies with cache mount
+RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
+    --mount=type=cache,target=/app/.cache,sharing=locked \
+    pip install \
+    numpy==1.26.4 \
+    pandas==2.2.3 \
+    scikit-learn==1.5.2 \
+    scipy==1.14.1 \
+    matplotlib==3.9.3 \
+    seaborn==0.13.2
+
+# Install deep learning frameworks (CPU versions for base)
+RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
+    --mount=type=cache,target=/app/.cache,sharing=locked \
+    pip install \
+    torch==2.5.1+cpu \
+    torchvision==0.20.1+cpu \
+    -f https://download.pytorch.org/whl/torch_stable.html
+
+# Install NLP and LLM packages
+RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
+    --mount=type=cache,target=/app/.cache,sharing=locked \
+    pip install \
+    transformers==4.48.0 \
+    tokenizers==0.21.0 \
+    sentence-transformers==3.3.1 \
+    langchain==0.3.14 \
+    langchain-community==0.3.14 \
+    openai==1.59.6 \
+    anthropic==0.42.0
+
+# Install vector database clients
+RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
+    pip install \
+    qdrant-client==1.12.2 \
+    chromadb==0.5.23 \
+    weaviate-client==4.10.1
+
+# Pre-download common models for caching
+RUN --mount=type=cache,target=/app/.cache,sharing=locked \
+    python -c "from sentence_transformers import SentenceTransformer; \
+               model = SentenceTransformer('all-MiniLM-L6-v2'); \
+               print('Model cached successfully')" || true
+
+# Set ownership for cache directories
+RUN chown -R appuser:appuser /app/.cache
+
+# Label for cache management
+LABEL maintainer="vllm-swarm" \
+      version="1.0.0" \
+      description="Base ML image with AI/ML dependencies"

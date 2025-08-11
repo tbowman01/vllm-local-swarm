@@ -1,0 +1,200 @@
+# Alert Rules for vLLM Local Swarm
+groups:
+  - name: service_health
+    interval: 30s
+    rules:
+      # Service Down Alerts
+      - alert: ServiceDown
+        expr: up{job=~"vllm-services|auth|memory|orchestrator"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: service
+        annotations:
+          summary: "Service {{ $labels.service }} is down"
+          description: "{{ $labels.service }} has been down for more than 2 minutes."
+
+      # High CPU Usage
+      - alert: HighCPUUsage
+        expr: rate(container_cpu_usage_seconds_total{name=~"vllm-.*"}[5m]) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+          component: resource
+        annotations:
+          summary: "High CPU usage on {{ $labels.name }}"
+          description: "Container {{ $labels.name }} CPU usage is above 80% (current: {{ $value }}%)"
+
+      # High Memory Usage
+      - alert: HighMemoryUsage
+        expr: (container_memory_usage_bytes{name=~"vllm-.*"} / container_spec_memory_limit_bytes{name=~"vllm-.*"}) * 100 > 90
+        for: 5m
+        labels:
+          severity: warning
+          component: resource
+        annotations:
+          summary: "High memory usage on {{ $labels.name }}"
+          description: "Container {{ $labels.name }} memory usage is above 90% (current: {{ $value }}%)"
+
+      # GPU Memory Alert (if GPU available)
+      - alert: HighGPUMemoryUsage
+        expr: nvidia_gpu_memory_used_bytes / nvidia_gpu_memory_total_bytes > 0.95
+        for: 2m
+        labels:
+          severity: critical
+          component: gpu
+        annotations:
+          summary: "GPU memory critically high"
+          description: "GPU memory usage is above 95% (current: {{ $value }}%)"
+
+      # Response Time Alert
+      - alert: HighResponseTime
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+          component: performance
+        annotations:
+          summary: "High response time on {{ $labels.service }}"
+          description: "95th percentile response time is above 2 seconds (current: {{ $value }}s)"
+
+      # Error Rate Alert
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          component: reliability
+        annotations:
+          summary: "High error rate on {{ $labels.service }}"
+          description: "Error rate is above 5% (current: {{ $value | humanizePercentage }})"
+
+  - name: database_health
+    interval: 30s
+    rules:
+      # Redis Connection Issues
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "Redis is down"
+          description: "Redis has been unreachable for more than 1 minute"
+
+      # Redis Memory Usage
+      - alert: RedisHighMemory
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "Redis memory usage high"
+          description: "Redis memory usage is above 90% (current: {{ $value | humanizePercentage }})"
+
+      # PostgreSQL Connection Issues
+      - alert: PostgreSQLDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "PostgreSQL is down"
+          description: "PostgreSQL has been unreachable for more than 1 minute"
+
+      # PostgreSQL Connection Pool
+      - alert: PostgreSQLTooManyConnections
+        expr: pg_stat_activity_count > 90
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "PostgreSQL has too many connections"
+          description: "PostgreSQL connection count is high (current: {{ $value }})"
+
+      # Qdrant Vector DB Health
+      - alert: QdrantDown
+        expr: up{job="qdrant"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "Qdrant vector database is down"
+          description: "Qdrant has been unreachable for more than 2 minutes"
+
+  - name: model_serving
+    interval: 30s
+    rules:
+      # Model Server Health
+      - alert: ModelServerDown
+        expr: up{service="vllm-phi"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: ml
+        annotations:
+          summary: "Model server {{ $labels.model }} is down"
+          description: "vLLM model server has been down for more than 2 minutes"
+
+      # Model Inference Latency
+      - alert: HighInferenceLatency
+        expr: histogram_quantile(0.95, rate(vllm_request_duration_seconds_bucket[5m])) > 10
+        for: 5m
+        labels:
+          severity: warning
+          component: ml
+        annotations:
+          summary: "High inference latency for {{ $labels.model }}"
+          description: "95th percentile inference time is above 10 seconds (current: {{ $value }}s)"
+
+      # Token Generation Rate
+      - alert: LowTokenGenerationRate
+        expr: rate(vllm_tokens_generated_total[5m]) < 100
+        for: 5m
+        labels:
+          severity: warning
+          component: ml
+        annotations:
+          summary: "Low token generation rate"
+          description: "Token generation rate is below 100 tokens/sec (current: {{ $value }})"
+
+  - name: system_health
+    interval: 30s
+    rules:
+      # Disk Space
+      - alert: DiskSpaceLow
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 10
+        for: 5m
+        labels:
+          severity: critical
+          component: system
+        annotations:
+          summary: "Low disk space on host"
+          description: "Disk space is below 10% (current: {{ $value }}% free)"
+
+      # System Load
+      - alert: HighSystemLoad
+        expr: node_load5 / on(instance) node_cpu_count > 2
+        for: 10m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High system load"
+          description: "System load is high (5-min load average: {{ $value }})"
+
+      # Container Restart
+      - alert: ContainerRestarting
+        expr: rate(container_restart_count[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          component: container
+        annotations:
+          summary: "Container {{ $labels.name }} is restarting"
+          description: "Container has restarted {{ $value }} times in the last 5 minutes"
