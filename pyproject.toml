@@ -1,0 +1,12 @@
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "B", "S", "I"]
+ignore = [
+    "B008",  # Allow Depends() in function argument defaults (FastAPI pattern)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"auth/auth_service.py" = ["B008", "S104"]  # FastAPI patterns and container host binding

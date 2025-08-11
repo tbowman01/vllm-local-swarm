@@ -1,0 +1,126 @@
+# Prometheus Configuration for vLLM Local Swarm
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'vllm-swarm'
+    environment: 'production'
+
+# Alerting configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+# Load rules
+rule_files:
+  - "alerts.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Node Exporter - System metrics
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node-exporter:9100']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'vllm-host'
+
+  # cAdvisor - Container metrics
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+    metric_relabel_configs:
+      - source_labels: [name]
+        regex: '(vllm-.*)'
+        target_label: container_name
+
+  # Redis Exporter
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+
+  # PostgreSQL Exporter
+  - job_name: 'postgresql'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+
+  # Docker metrics
+  - job_name: 'docker'
+    static_configs:
+      - targets: ['host.docker.internal:9323']
+
+  # Custom Application Metrics
+  - job_name: 'vllm-services'
+    scrape_interval: 10s
+    static_configs:
+      # Auth Service
+      - targets: ['auth-service:8005']
+        labels:
+          service: 'auth'
+          
+      # Memory API
+      - targets: ['memory-api:8003']
+        labels:
+          service: 'memory'
+          
+      # Orchestrator
+      - targets: ['orchestrator:8004']
+        labels:
+          service: 'orchestrator'
+          
+      # vLLM Model Server
+      - targets: ['vllm-phi:8000']
+        labels:
+          service: 'vllm-phi'
+          model: 'phi-3.5-mini'
+
+  # Qdrant Vector DB
+  - job_name: 'qdrant'
+    static_configs:
+      - targets: ['qdrant:6333']
+    metrics_path: '/metrics'
+
+  # Langfuse
+  - job_name: 'langfuse'
+    static_configs:
+      - targets: ['langfuse-web:3000']
+    metrics_path: '/api/metrics'
+
+  # Custom Metrics Collector
+  - job_name: 'metrics-collector'
+    static_configs:
+      - targets: ['metrics-collector:8090']
+
+  # Pushgateway for batch jobs
+  - job_name: 'pushgateway'
+    honor_labels: true
+    static_configs:
+      - targets: ['pushgateway:9091']
+
+  # Loki metrics
+  - job_name: 'loki'
+    static_configs:
+      - targets: ['loki:3100']
+
+  # Grafana metrics
+  - job_name: 'grafana'
+    static_configs:
+      - targets: ['grafana:3000']
+
+# Service discovery for dynamic targets
+# Kubernetes service discovery (if running in K8s)
+# - job_name: 'kubernetes-pods'
+#   kubernetes_sd_configs:
+#     - role: pod
+#   relabel_configs:
+#     - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+#       action: keep
+#       regex: true

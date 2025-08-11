@@ -26,6 +26,9 @@ NC := \033[0m
 # Default target
 .DEFAULT_GOAL := help
 
+# Include optimized build targets
+-include Makefile.optimized
+
 # ===================================================================
 # Help and Information
 # ===================================================================

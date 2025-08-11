@@ -1,0 +1,44 @@
+# BuildKit daemon configuration for optimized caching
+# This configuration enables advanced caching features
+
+[worker.oci]
+  # Enable all capabilities for better performance
+  max-parallelism = 4
+
+[registry."docker.io"]
+  # Docker Hub mirror configuration
+  mirrors = ["mirror.gcr.io"]
+
+[registry."ghcr.io"]
+  # GitHub Container Registry configuration
+  mirrors = []
+
+# Local cache configuration
+[[worker.oci.gcconfig]]
+  # Increase cache size for better performance
+  [[worker.oci.gcconfig.rule]]
+    type = "blob"
+    size = "10GB"
+    keep-duration = "7d"
+
+  [[worker.oci.gcconfig.rule]]
+    type = "source.local"
+    size = "5GB"
+    keep-duration = "7d"
+
+  [[worker.oci.gcconfig.rule]]
+    type = "source.git"
+    keep-duration = "7d"
+    size = "2GB"
+
+# Enable experimental features
+[feature]
+  # Enable cache import/export
+  cache-import = true
+  cache-export = true
+  
+  # Enable multi-platform builds
+  multi-platform = true
+  
+  # Enable build secrets
+  secrets = true

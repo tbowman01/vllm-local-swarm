@@ -1,0 +1,237 @@
+# 🚀 Optimized Docker Compose with BuildKit Caching
+# Uses multi-stage builds and shared base images for faster builds
+
+x-buildkit: &buildkit-config
+  cache_from:
+    - type=registry,ref=vllm-swarm/cache
+  cache_to:
+    - type=registry,ref=vllm-swarm/cache,mode=max
+  
+x-common-env: &common-env
+  REDIS_URL: redis://redis:6379
+  JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-secret-jwt-key-change-this-in-production}
+  PYTHONUNBUFFERED: 1
+  DOCKER_BUILDKIT: 1
+
+x-healthcheck: &default-healthcheck
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 40s
+
+services:
+  # Build base images first for maximum cache reuse
+  base-python:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.base-python
+      cache_from:
+        - vllm-swarm/base-python:cache
+      cache_to:
+        - type=inline
+      tags:
+        - vllm-swarm/base-python:latest
+    image: vllm-swarm/base-python:latest
+    profiles:
+      - build
+
+  base-ml:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.base-ml
+      cache_from:
+        - vllm-swarm/base-ml:cache
+        - vllm-swarm/base-python:latest
+      cache_to:
+        - type=inline
+      tags:
+        - vllm-swarm/base-ml:latest
+      args:
+        BUILDKIT_INLINE_CACHE: 1
+    image: vllm-swarm/base-ml:latest
+    depends_on:
+      - base-python
+    profiles:
+      - build
+
+  # Optimized Authentication Service
+  auth-service-optimized:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.auth-optimized
+      cache_from:
+        - vllm-swarm/auth:cache
+        - vllm-swarm/base-python:latest
+      cache_to:
+        - type=inline
+      args:
+        BUILDKIT_INLINE_CACHE: 1
+    image: vllm-swarm/auth:optimized
+    container_name: vllm-auth-optimized
+    ports:
+      - "8005:8005"
+    environment:
+      <<: *common-env
+      AUTH_PORT: 8005
+      DATABASE_URL: postgresql+asyncpg://langfuse:${LANGFUSE_DB_PASSWORD:-langfuse123}@langfuse-db:5432/auth
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      <<: *default-healthcheck
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8005/health').raise_for_status()"]
+    networks:
+      - vllm-network
+    restart: unless-stopped
+
+  # Optimized Memory API Service
+  memory-api-optimized:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.memory-optimized
+      cache_from:
+        - vllm-swarm/memory:cache
+        - vllm-swarm/base-ml:latest
+      cache_to:
+        - type=inline
+      args:
+        BUILDKIT_INLINE_CACHE: 1
+    image: vllm-swarm/memory:optimized
+    container_name: vllm-memory-optimized
+    ports:
+      - "8003:8003"
+    environment:
+      <<: *common-env
+      API_PORT: 8003
+      QDRANT_URL: http://qdrant:6333
+      AUTH_SERVICE_URL: http://auth-service-optimized:8005
+    depends_on:
+      auth-service-optimized:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      <<: *default-healthcheck
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8003/health').raise_for_status()"]
+    networks:
+      - vllm-network
+    restart: unless-stopped
+    volumes:
+      - memory_cache:/app/.cache
+      - memory_data:/app/memory/sessions
+
+  # Optimized Orchestrator Service
+  orchestrator-optimized:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.orchestrator-optimized
+      cache_from:
+        - vllm-swarm/orchestrator:cache
+        - vllm-swarm/base-ml:latest
+      cache_to:
+        - type=inline
+      args:
+        BUILDKIT_INLINE_CACHE: 1
+    image: vllm-swarm/orchestrator:optimized
+    container_name: vllm-orchestrator-optimized
+    ports:
+      - "8004:8004"
+    environment:
+      <<: *common-env
+      ORCHESTRATOR_PORT: 8004
+      MODEL_SERVICE_URL: http://vllm-phi:8000
+      MEMORY_API_URL: http://memory-api-optimized:8003
+      AUTH_SERVICE_URL: http://auth-service-optimized:8005
+    depends_on:
+      auth-service-optimized:
+        condition: service_healthy
+      memory-api-optimized:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      <<: *default-healthcheck
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8004/health').raise_for_status()"]
+    networks:
+      - vllm-network
+    restart: unless-stopped
+    volumes:
+      - orchestrator_cache:/app/.cache
+
+  # Supporting services (self-contained definitions)
+  redis:
+    image: redis:7-alpine
+    container_name: vllm-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --save 60 1 --loglevel warning
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - vllm-network
+    restart: unless-stopped
+
+  langfuse-db:
+    image: postgres:15
+    container_name: vllm-langfuse-db
+    environment:
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: ${LANGFUSE_DB_PASSWORD:-langfuse123}
+      POSTGRES_DB: langfuse
+    volumes:
+      - langfuse_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - vllm-network
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: vllm-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:6333/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - vllm-network
+    restart: unless-stopped
+
+volumes:
+  memory_cache:
+    driver: local
+  memory_data:
+    driver: local
+  orchestrator_cache:
+    driver: local
+  redis_data:
+    driver: local
+  langfuse_db_data:
+    driver: local
+  qdrant_data:
+    driver: local
+
+networks:
+  vllm-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

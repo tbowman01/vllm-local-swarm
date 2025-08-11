@@ -148,7 +148,7 @@ jobs:
 
     strategy:
       matrix:
-        service: [auth-service, orchestrator-auth]
+        service: [auth-service, orchestrator-auth, memory-api]
 
     steps:
     - name: Checkout code
@@ -157,21 +157,69 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
+    - name: Determine Dockerfile path
+      id: dockerfile
+      run: |
+        SERVICE=${{ matrix.service }}
+        
+        # Map service names to Dockerfile paths
+        case $SERVICE in
+          "auth-service")
+            if [ -f "docker/Dockerfile.auth-optimized" ]; then
+              echo "path=docker/Dockerfile.auth-optimized" >> $GITHUB_OUTPUT
+            else
+              echo "path=docker/Dockerfile.auth" >> $GITHUB_OUTPUT
+            fi
+            ;;
+          "orchestrator-auth")
+            if [ -f "docker/Dockerfile.orchestrator-optimized" ]; then
+              echo "path=docker/Dockerfile.orchestrator-optimized" >> $GITHUB_OUTPUT
+            else
+              echo "path=docker/Dockerfile.orchestrator" >> $GITHUB_OUTPUT
+            fi
+            ;;
+          "memory-api")
+            if [ -f "docker/Dockerfile.memory-optimized" ]; then
+              echo "path=docker/Dockerfile.memory-optimized" >> $GITHUB_OUTPUT
+            else
+              echo "path=docker/Dockerfile.memory-api" >> $GITHUB_OUTPUT
+            fi
+            ;;
+        esac
+
+    - name: Build base images if needed
+      run: |
+        # Check if optimized Dockerfiles exist and build base images
+        if [ -f "docker/Dockerfile.base-python" ]; then
+          echo "🏗️ Building base images for optimized builds..."
+          docker build -f docker/Dockerfile.base-python -t vllm-swarm/base-python:latest .
+          
+          if [ -f "docker/Dockerfile.base-ml" ]; then
+            docker build -f docker/Dockerfile.base-ml -t vllm-swarm/base-ml:latest .
+          fi
+        fi
+
     - name: Build Docker image
       uses: docker/build-push-action@v5
       with:
         context: .
-        file: docker/Dockerfile.${{ matrix.service == 'auth-service' && 'auth' || 'orchestrator' }}
+        file: ${{ steps.dockerfile.outputs.path }}
         push: false
         tags: test-${{ matrix.service }}:latest
         cache-from: type=gha
         cache-to: type=gha,mode=max
+        build-args: |
+          BUILDKIT_INLINE_CACHE=1
 
     - name: Test Docker image
       run: |
         # Basic smoke test - ensure container can start
-        docker run --rm test-${{ matrix.service }}:latest python --version
-        echo "✅ Docker image for ${{ matrix.service }} builds successfully"
+        if docker run --rm test-${{ matrix.service }}:latest python --version; then
+          echo "✅ Docker image for ${{ matrix.service }} builds successfully"
+        else
+          echo "❌ Docker image test failed for ${{ matrix.service }}"
+          exit 1
+        fi
 
   # ============================================================================
   # DOCUMENTATION CHECKS

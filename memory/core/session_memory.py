@@ -431,7 +431,7 @@ class SessionMemory:
             stats = {
                 "total_keys": 0,
                 "keys_by_type": {},
-                "memory_usage": await self.redis.memory_usage() if hasattr(self.redis, 'memory_usage') else "unknown",
+                "memory_usage": "N/A",  # Redis memory_usage requires key param
                 "connection_info": {
                     "host": self.config.host,
                     "port": self.config.port,

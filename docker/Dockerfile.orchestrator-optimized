@@ -1,0 +1,47 @@
+# 🎯 Optimized Orchestrator Service
+# syntax=docker/dockerfile:1.4
+
+# Build stage
+FROM vllm-swarm/base-ml:latest AS builder
+
+WORKDIR /app
+
+# Copy all requirements
+COPY requirements.txt requirements.memory.txt auth/requirements.txt /app/
+
+# Merge and install dependencies
+RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
+    cat requirements.txt requirements.memory.txt auth/requirements.txt | \
+    sort -u > combined-requirements.txt && \
+    pip install --user --no-warn-script-location \
+    -r combined-requirements.txt
+
+# Runtime stage
+FROM vllm-swarm/base-ml:latest AS runtime
+
+WORKDIR /app
+
+# Copy installed packages
+COPY --from=builder --chown=appuser:appuser /root/.local /home/appuser/.local
+
+# Copy application code
+COPY --chown=appuser:appuser src/ /app/src/
+COPY --chown=appuser:appuser agents/ /app/agents/
+COPY --chown=appuser:appuser coordination/ /app/coordination/
+COPY --chown=appuser:appuser memory/ /app/memory/
+COPY --chown=appuser:appuser auth/ /app/auth/
+COPY --chown=appuser:appuser docker/scripts/orchestrator_server_auth.py /app/
+
+USER appuser
+
+ENV PATH=/home/appuser/.local/bin:$PATH \
+    PYTHONPATH=/app:$PYTHONPATH \
+    ORCHESTRATOR_PORT=8004
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD python -c "import httpx; httpx.get('http://localhost:8004/health').raise_for_status()"
+
+EXPOSE 8004
+
+CMD ["python", "orchestrator_server_auth.py"]

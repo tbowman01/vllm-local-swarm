@@ -104,7 +104,7 @@ class UserLoginRequest(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
-    token_type: str = "bearer"
+    token_type: str = "bearer"  # noqa: S105
     expires_in: int
     user_id: str
     username: str
@@ -187,7 +187,7 @@ def create_refresh_token(data: dict):
 
 
 async def verify_token(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    credentials: HTTPAuthorizationCredentials = Depends(security),  # noqa: B008
 ) -> dict:
     """Verify and decode a JWT token"""
     token = credentials.credentials
@@ -207,11 +207,11 @@ async def verify_token(
     except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has expired"
-        )
+        ) from None
     except jwt.JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
-        )
+        ) from None
 
 
 async def verify_api_key(api_key: str = Header(alias="X-API-Key")) -> dict:
@@ -297,7 +297,9 @@ async def startup_event():
 
         # Create default admin user if not exists
         async with AsyncSessionLocal() as db:
-            result = await db.execute(text("SELECT * FROM users WHERE username = 'admin'"))
+            result = await db.execute(
+                text("SELECT * FROM users WHERE username = 'admin'")
+            )
             if not result.first():
                 admin_user = User(
                     username="admin",
@@ -383,7 +385,8 @@ async def login(request: UserLoginRequest, db: AsyncSession = Depends(get_db)):
     """Login and receive JWT tokens"""
     # Find user
     result = await db.execute(
-        text("SELECT * FROM users WHERE username = :username"), {"username": request.username}
+        text("SELECT * FROM users WHERE username = :username"),
+        {"username": request.username},
     )
     user = result.first()
 
@@ -472,7 +475,8 @@ async def refresh_token(refresh_token: str, db: AsyncSession = Depends(get_db)):
 
         # Get user
         result = await db.execute(
-            text("SELECT * FROM users WHERE id = :id AND is_active = true"), {"id": user_id}
+            text("SELECT * FROM users WHERE id = :id AND is_active = true"),
+            {"id": user_id},
         )
         user = result.first()
 
@@ -511,7 +515,7 @@ async def refresh_token(refresh_token: str, db: AsyncSession = Depends(get_db)):
     except jwt.JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token"
-        )
+        ) from None
 
 
 @app.get("/auth/me", response_model=UserResponse)
@@ -521,7 +525,9 @@ async def get_current_user(
     """Get current user information"""
     user_id = token_data.get("sub")
 
-    result = await db.execute(text("SELECT * FROM users WHERE id = :id"), {"id": user_id})
+    result = await db.execute(
+        text("SELECT * FROM users WHERE id = :id"), {"id": user_id}
+    )
     user = result.first()
 
     if not user:
@@ -551,7 +557,9 @@ async def change_password(
     """Change user password"""
     user_id = token_data.get("sub")
 
-    result = await db.execute(text("SELECT * FROM users WHERE id = :id"), {"id": user_id})
+    result = await db.execute(
+        text("SELECT * FROM users WHERE id = :id"), {"id": user_id}
+    )
     user = result.first()
 
     if not user:
@@ -568,7 +576,9 @@ async def change_password(
     # Update password
     new_hash = get_password_hash(request.new_password)
     await db.execute(
-        text("UPDATE users SET password_hash = :hash, updated_at = :now WHERE id = :id"),
+        text(
+            "UPDATE users SET password_hash = :hash, updated_at = :now WHERE id = :id"
+        ),
         {"hash": new_hash, "now": datetime.utcnow(), "id": user_id},
     )
     await db.commit()
@@ -656,7 +666,10 @@ async def revoke_api_key(
     user_id = token_data.get("sub")
 
     result = await db.execute(
-        text("UPDATE api_keys SET is_active = false WHERE id = :id AND user_id = :user_id"),
+        text(
+            "UPDATE api_keys SET is_active = false WHERE id = :id "
+            "AND user_id = :user_id"
+        ),
         {"id": key_id, "user_id": user_id},
     )
 
