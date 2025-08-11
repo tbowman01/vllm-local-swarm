@@ -12,23 +12,12 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  # Build base images first
-  build-base-images:
+  # Build base-python first
+  build-base-python:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-    
-    strategy:
-      matrix:
-        base_image:
-          - name: base-python
-            dockerfile: docker/Dockerfile.base-python
-            image: base-python
-          - name: base-ml
-            dockerfile: docker/Dockerfile.base-ml
-            image: base-ml
-            depends_on: base-python
 
     steps:
     - name: 📥 Checkout repository
@@ -37,12 +26,12 @@ jobs:
     - name: ✅ Check if Dockerfile exists
       id: check_dockerfile
       run: |
-        if [ -f "${{ matrix.base_image.dockerfile }}" ]; then
+        if [ -f "docker/Dockerfile.base-python" ]; then
           echo "exists=true" >> $GITHUB_OUTPUT
-          echo "✅ Dockerfile exists: ${{ matrix.base_image.dockerfile }}"
+          echo "✅ Dockerfile exists: docker/Dockerfile.base-python"
         else
           echo "exists=false" >> $GITHUB_OUTPUT
-          echo "⚠️ Dockerfile not found: ${{ matrix.base_image.dockerfile }}"
+          echo "⚠️ Dockerfile not found: docker/Dockerfile.base-python"
         fi
 
     - name: 🔐 Log in to Container Registry
@@ -57,18 +46,12 @@ jobs:
       if: steps.check_dockerfile.outputs.exists == 'true'
       uses: docker/setup-buildx-action@v3
 
-    - name: 🏗️ Build base-python dependency
-      if: steps.check_dockerfile.outputs.exists == 'true' && matrix.base_image.depends_on == 'base-python'
-      run: |
-        docker build -f docker/Dockerfile.base-python -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/base-python:latest .
-        docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/base-python:latest vllm-swarm/base-python:latest
-
     - name: 🏷️ Extract metadata
       id: meta
       if: steps.check_dockerfile.outputs.exists == 'true'
       uses: docker/metadata-action@v5
       with:
-        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.base_image.image }}
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/base-python
         tags: |
           type=ref,event=branch
           type=ref,event=pr
@@ -78,12 +61,84 @@ jobs:
           type=sha
           type=raw,value=latest,enable={{is_default_branch}}
 
-    - name: 🐳 Build and push base image
+    - name: 🐳 Build and push base-python image
       if: steps.check_dockerfile.outputs.exists == 'true'
       uses: docker/build-push-action@v5
       with:
         context: .
-        file: ${{ matrix.base_image.dockerfile }}
+        file: docker/Dockerfile.base-python
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        platforms: linux/amd64,linux/arm64
+        build-args: |
+          BUILDKIT_INLINE_CACHE=1
+
+  # Build base-ml (depends on base-python)
+  build-base-ml:
+    needs: build-base-python
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v4
+
+    - name: ✅ Check if Dockerfile exists
+      id: check_dockerfile
+      run: |
+        if [ -f "docker/Dockerfile.base-ml" ]; then
+          echo "exists=true" >> $GITHUB_OUTPUT
+          echo "✅ Dockerfile exists: docker/Dockerfile.base-ml"
+        else
+          echo "exists=false" >> $GITHUB_OUTPUT
+          echo "⚠️ Dockerfile not found: docker/Dockerfile.base-ml"
+        fi
+
+    - name: 🔐 Log in to Container Registry
+      if: steps.check_dockerfile.outputs.exists == 'true'
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: 🏗️ Set up Docker Buildx
+      if: steps.check_dockerfile.outputs.exists == 'true'
+      uses: docker/setup-buildx-action@v3
+
+    - name: 🏗️ Pull base-python dependency
+      if: steps.check_dockerfile.outputs.exists == 'true'
+      run: |
+        # Pull the published base-python image
+        docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/base-python:latest
+        docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/base-python:latest vllm-swarm/base-python:latest
+
+    - name: 🏷️ Extract metadata
+      id: meta
+      if: steps.check_dockerfile.outputs.exists == 'true'
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/base-ml
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=semver,pattern={{major}}
+          type=sha
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: 🐳 Build and push base-ml image
+      if: steps.check_dockerfile.outputs.exists == 'true'
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: docker/Dockerfile.base-ml
         push: true
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
@@ -172,7 +227,7 @@ jobs:
 
   # Build optimized services (depends on base images)
   build-optimized-services:
-    needs: build-base-images
+    needs: [build-base-python, build-base-ml]
     runs-on: ubuntu-latest
     permissions:
       contents: read
