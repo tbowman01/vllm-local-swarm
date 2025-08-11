@@ -315,7 +315,7 @@ jobs:
 
   security-scan:
     runs-on: ubuntu-latest
-    needs: [build-and-publish, build-composite]
+    needs: [build-standard-services, build-optimized-services, build-composite]
     permissions:
       contents: read
       packages: read
@@ -358,7 +358,7 @@ jobs:
 
   publish-summary:
     runs-on: ubuntu-latest
-    needs: [build-and-publish, build-composite]
+    needs: [build-standard-services, build-optimized-services, build-composite]
     if: always()
     
     steps:
