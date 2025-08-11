@@ -39,7 +39,7 @@ RUN useradd -m -u 1000 vllm-user && \
     chown -R vllm-user:vllm-user /app
 
 # Create startup script for multi-service orchestration
-RUN cat > /app/start.sh << 'EOF'
+COPY <<'EOF' /app/start.sh
 #!/bin/bash
 set -e
 
@@ -79,7 +79,6 @@ trap cleanup SIGTERM SIGINT
 # Wait for all services
 echo "✅ All services started. Monitoring..."
 wait
-
 EOF
 
 RUN chmod +x /app/start.sh
