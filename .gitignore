@@ -49,7 +49,7 @@ target/
 # Claude Flow generated files
 .claude/settings.local.json
 .claude/mcp.json
-.claude-flow/metrics/
+.claude-flow/metrics/*
 .swarm/
 .hive-mind/
 memory/claude-flow-data.json
