@@ -162,21 +162,58 @@ services:
     volumes:
       - orchestrator_cache:/app/.cache
 
-  # Supporting services (using existing definitions)
+  # Supporting services (self-contained definitions)
   redis:
-    extends:
-      file: docker-compose.yml
-      service: redis
+    image: redis:7-alpine
+    container_name: vllm-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --save 60 1 --loglevel warning
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - vllm-network
+    restart: unless-stopped
 
   langfuse-db:
-    extends:
-      file: docker-compose.yml
-      service: langfuse-db
+    image: postgres:15
+    container_name: vllm-langfuse-db
+    environment:
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: ${LANGFUSE_DB_PASSWORD:-langfuse123}
+      POSTGRES_DB: langfuse
+    volumes:
+      - langfuse_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - vllm-network
+    restart: unless-stopped
 
   qdrant:
-    extends:
-      file: docker-compose.yml
-      service: qdrant
+    image: qdrant/qdrant:latest
+    container_name: vllm-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:6333/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - vllm-network
+    restart: unless-stopped
 
 volumes:
   memory_cache:
@@ -184,6 +221,12 @@ volumes:
   memory_data:
     driver: local
   orchestrator_cache:
+    driver: local
+  redis_data:
+    driver: local
+  langfuse_db_data:
+    driver: local
+  qdrant_data:
     driver: local
 
 networks:
