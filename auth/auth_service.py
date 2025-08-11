@@ -104,7 +104,7 @@ class UserLoginRequest(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
-    token_type: str = "bearer"
+    token_type: str = "bearer"  # noqa: S105
     expires_in: int
     user_id: str
     username: str
@@ -187,7 +187,7 @@ def create_refresh_token(data: dict):
 
 
 async def verify_token(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    credentials: HTTPAuthorizationCredentials = Depends(security),  # noqa: B008
 ) -> dict:
     """Verify and decode a JWT token"""
     token = credentials.credentials
@@ -207,11 +207,11 @@ async def verify_token(
     except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has expired"
-        )
+        ) from None
     except jwt.JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
-        )
+        ) from None
 
 
 async def verify_api_key(api_key: str = Header(alias="X-API-Key")) -> dict:
@@ -515,7 +515,7 @@ async def refresh_token(refresh_token: str, db: AsyncSession = Depends(get_db)):
     except jwt.JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token"
-        )
+        ) from None
 
 
 @app.get("/auth/me", response_model=UserResponse)
@@ -667,7 +667,8 @@ async def revoke_api_key(
 
     result = await db.execute(
         text(
-            "UPDATE api_keys SET is_active = false WHERE id = :id AND user_id = :user_id"
+            "UPDATE api_keys SET is_active = false WHERE id = :id "
+            "AND user_id = :user_id"
         ),
         {"id": key_id, "user_id": user_id},
     )
@@ -720,7 +721,7 @@ if __name__ == "__main__":
 
     uvicorn.run(
         app,
-        host="0.0.0.0",  # nosec B104 - Required for containerized service
+        host="0.0.0.0",  # noqa: S104 - Required for containerized service
         port=AUTH_PORT,
         log_level="info",
     )
