@@ -721,7 +721,7 @@ if __name__ == "__main__":
 
     uvicorn.run(
         app,
-        host="0.0.0.0",  # noqa: S104 - Required for containerized service
+        host="0.0.0.0",  # nosec B104 - Required for containerized service
         port=AUTH_PORT,
         log_level="info",
     )
